@@ -1,0 +1,15 @@
+# Core package: owns OpenMP + CppAD parallel_setup (not -fvisibility=hidden;
+# backends hide their local CppAD statics instead).
+# macOS OpenMP: dynamic libomp (see inst/scripts/backend-configure.sh).
+# CppAD headers come from LinkingTo: RCppAD (R adds -I automatically).
+# Eigen headers come from LinkingTo: RcppEigen.
+PKG_CPPFLAGS = -I../inst/include -I../src/include @OPENMP_CPPFLAGS@ -DEIGEN_DONT_PARALLELIZE
+PKG_CXXFLAGS = @OPENMP_CXXFLAGS@ @DEBUG_CXXFLAGS@ @WARN_CXXFLAGS@
+PKG_LIBS     = @OPENMP_LIBS@
+
+all: $(SHLIB) strippedLib
+
+strippedLib: $(SHLIB)
+	if command -v strip >/dev/null 2>&1; then case "$$(uname -s)" in Linux) strip --strip-debug "$(SHLIB)";; esac; fi
+
+.PHONY: strippedLib

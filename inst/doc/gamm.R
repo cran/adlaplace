@@ -1,0 +1,245 @@
+## ----setup, include=FALSE-----------------------------------------------------
+library("Matrix")
+library("adlaplace")
+if (file.exists("vignette_full.R")) {
+  source("vignette_full.R", local = TRUE)
+} else {
+  vignette_full <- TRUE
+  vignette_num_threads <- 2L
+}
+
+## ----gamm---------------------------------------------------------------------
+# Use packaged data for vignette builds (stable across renders).
+# To regenerate locally:
+#   set.seed(0)
+#   dat <- mgcv::gamSim(6, n = 500)
+#   dat$f2 <- sqrt(dat$f2)
+#   dat$f2 <- dat$f2 - dat$f2[which.min(abs(dat$x2 - 0.5))]
+#   dat$mu <- exp(-1 + 0 * dat$x1 + dat$f2 +
+#     rnorm(nlevels(dat$fac), sd = 0.25)[as.integer(dat$fac)])
+#   nbinom_sd <- 0.25
+#   dat$Z <- rgamma(nrow(dat), nbinom_sd^(-2), nbinom_sd^(-2))
+#   dat$y <- rpois(nrow(dat), lambda = dat$mu * dat$Z)
+#   save(dat, file = "data/gamm.RData")
+data("gamm", package = "adlaplace")
+
+## ----collect_terms------------------------------------------------------------
+my_formula <-
+  adlaplace::nbinom(y, lower = 1e-9, init = 0.15) ~
+  x1 +
+  adlaplace::iwp(
+    x2,
+    ref_value = 0.5,
+    p = 2, knots = seq(0, 1, len = 21),
+    init = 1
+  ) +
+  adlaplace::iid(fac, init = 0.25)
+
+## ----model_data---------------------------------------------------------------
+md <- model_data(
+  data = dat,
+  formula = my_formula
+)
+
+config <- list(
+  transform_theta = TRUE,
+  obs_groups = adlaplace::obs_groups(
+    md$term_data$A,
+    num_shards = if (vignette_full) 100 else 10
+  ),
+  verbose = FALSE
+)
+
+## ----ad_fun_create------------------------------------------------------------
+config$num_threads <- vignette_num_threads
+control_inner <- list(maxit = 100L, report.level = 0, report.freq = 0)
+ad_pack <- adlaplace::ad_pack(md, config, num_threads = config$num_threads)
+# Serial dens/grad/hess: clone clears multi-thread affinity.
+dens_ptr <- adlaplace::clone_ad_pack_ptr(ad_pack@ptr)
+
+## ----log_lik------------------------------------------------------------------
+res <- adlaplace::log_lik_laplace(
+  x = md$term_data$info$parameters$init,
+  ad_pack = ad_pack,
+  config = c(config, list(verbose = FALSE)),
+  control = control_inner,
+  deriv = TRUE
+)
+res$parameters
+res$log_lik
+res$deriv$d_neg_log_lik
+
+## ----trustOptimOuterWrappers--------------------------------------------------
+md$term_data$info$parameters$lower[is.infinite(md$term_data$info$parameters$lower)] <- -5
+md$term_data$info$parameters$upper[is.infinite(md$term_data$info$parameters$upper)] <- 5
+
+cache <- new.env(parent = emptyenv())
+cache$gamma <- rep(0, nrow(md$term_data$info$gamma)) # config$gamma not required; warm-start via cache
+
+x0 <- md$term_data$info$parameters$init
+
+adlaplace::outer_fn(
+  x = x0, cache = cache, config = config, ad_pack = ad_pack,
+  control_inner = control_inner
+)
+adlaplace::outer_gr(
+  x = x0, cache = cache, config = config, ad_pack = ad_pack,
+  control_inner = control_inner
+)
+
+outer_fit <- stats::optim(
+  par = md$term_data$info$parameters$init,
+  fn = adlaplace::outer_fn,
+  gr = adlaplace::outer_gr,
+  method = "L-BFGS-B",
+  control = list(
+    maxit = if (vignette_full) 200 else 8,
+    trace = if (vignette_full) 1 else 0,
+    factr = 1e3,
+    pgtol = 1e-12,
+    parscale = md$term_data$info$parameters$parscale
+  ),
+  lower = md$term_data$info$parameters$lower,
+  upper = md$term_data$info$parameters$upper,
+  config = config,
+  ad_pack = ad_pack,
+  cache = cache,
+  control_inner = control_inner
+)
+
+outer_fit$par
+outer_fit$summary <- format_parameters(
+  parameters = outer_fit$par, gamma = cache$gamma,
+  info = ad_pack@info
+)
+outer_fit$summary$parameters
+outer_fit$value
+adlaplace::outer_gr(x = outer_fit$par, cache = cache, config = config, ad_pack = ad_pack)
+
+## ----checkByShard-------------------------------------------------------------
+shards <- seq.int(from = 0, length.out = adlaplace:::n_groups(dens_ptr))
+xx <- c(
+  md$term_data$info$beta$init,
+  rep(0, nrow(md$term_data$info$gamma)),
+  adlaplace::apply_theta_log(md$term_data$info$theta, cols = "init")$init
+)
+
+
+by_shard <- mapply(
+  adlaplace::joint_log_dens, ad_shards = shards,
+  MoreArgs = list(x = xx, ad_pack = dens_ptr, negative = FALSE),
+  SIMPLIFY = TRUE
+)
+by_shard[seq(to = length(by_shard), length.out = 5)]
+
+## ----testLogLgrad, fig.height=7, eval = vignette_full-------------------------
+# Finite-difference points should fall on the AD lines.
+oldpar <- par(no.readonly = TRUE)
+par(mfrow = c(3, 2), mar = c(2, 2, 2, 0), mgp = c(1, 0.5, 0))
+
+x1 <- outer_fit$par
+Dpar <- 4L
+scan_label <- md$term_data$info$parameters$label[Dpar]
+scan_ll <- deriv_scan_laplace(
+  ad_pack,
+  x = x1,
+  index = Dpar,
+  width = 0.5,
+  n = 7L,
+  config = config,
+  gamma = cache$gamma,
+  control = control_inner
+)
+res_mid <- scan_ll$mid_result
+
+plot(scan_ll$grid, scan_ll$value, xlab = scan_label, ylab = "-log lik")
+plot(scan_ll$grid, scan_ll$grad[, Dpar], type = "l",
+     xlab = scan_label, ylab = "grad")
+points(scan_ll$mid, scan_ll$fd_value, pch = 16)
+legend("topright", legend = c("AD", "finite diff"),
+       lty = c(1, NA), pch = c(NA, 16), bty = "n")
+
+Du <- min(2L, ncol(scan_ll$u_hat))
+plot(scan_ll$grid, scan_ll$u_hat[, Du], type = "l",
+     xlab = scan_label, ylab = paste0("u[", Du, "]"))
+plot(scan_ll$grid, scan_ll$dU_index[, Du], type = "l",
+     xlab = scan_label, ylab = paste0("du[", Du, "]/d", scan_label))
+points(scan_ll$mid, scan_ll$fd_u[, Du], pch = 16)
+
+plot(scan_ll$grid, scan_ll$half_log_det, xlab = scan_label, ylab = "half log det")
+plot(scan_ll$grid, scan_ll$d_det[, Dpar], type = "l",
+     xlab = scan_label, ylab = paste0("d log det / d", scan_label))
+points(scan_ll$mid, scan_ll$fd_det, pch = 16)
+
+hessian_outer <- Matrix::forceSymmetric(res_mid$hessian$outer)
+hessian_ad <- adlaplace::hessian(
+  dens_ptr,
+  res_mid$full_parameters,
+  inner = FALSE,
+  negative = TRUE
+)
+max(abs((hessian_outer - hessian_ad)@x), na.rm = TRUE)
+par(oldpar)
+
+## ----derivJointDens, fig.height=5, eval = vignette_full-----------------------
+# Finite-difference points should fall on the AD lines.
+oldpar <- par(no.readonly = TRUE)
+par(mfrow = c(3, 2), mar = c(2, 2, 2, 0), mgp = c(1, 0.5, 0))
+
+x_here <- c(
+  md$term_data$info$beta$init,
+  0.1 + rep(0, nrow(md$term_data$info$gamma)),
+  adlaplace::apply_theta_log(md$term_data$info$theta, cols = "init")$init
+)
+Dpar_dens <- 1L
+shards <- seq.int(from = 0L, length.out = adlaplace:::n_groups(dens_ptr))
+
+scan_j <- deriv_scan_joint(
+  dens_ptr,
+  x = x_here,
+  index = Dpar_dens,
+  width = 1,
+  n = 11L,
+  ad_shards = shards,
+  negative = FALSE
+)
+
+plot(scan_j$grid, scan_j$value)
+plot(scan_j$grid, scan_j$grad[, Dpar_dens], type = "l", ylab = "AD gradient")
+points(scan_j$mid, scan_j$fd_value, pch = 16)
+legend("topright", legend = c("AD", "finite diff"),
+       lty = c(1, NA), pch = c(NA, 16), bty = "n")
+
+for (Dpar2 in c(Dpar_dens, 1L, length(x_here) - 2L, length(x_here) - 1L)) {
+  plot(
+    scan_j$grid, scan_j$hess_row[, Dpar2],
+    type = "l",
+    ylab = paste0("H[", Dpar_dens, ",", Dpar2, "]"),
+    ylim = range(c(scan_j$hess_row[, Dpar2], scan_j$fd_grad[, Dpar2]), na.rm = TRUE)
+  )
+  points(scan_j$mid, scan_j$fd_grad[, Dpar2], pch = 16)
+}
+par(oldpar)
+
+## ----plot_results-------------------------------------------------------------
+res <- adlaplace::log_lik_laplace(
+  x = outer_fit$par,
+  gamma = cache$gamma,
+  ad_pack = ad_pack,
+  config = config,
+  control = control_inner,
+  deriv = FALSE
+)
+
+newx <- data.frame(x2 = seq(0, 1, len = 101))
+
+sim <- adlaplace::sim_fit(
+  x = newx,
+  data = md,
+  fit = res,
+  n = if (vignette_full) 500L else 20L
+)
+
+matplot(newx$x2, sim, type = "l", col = "#00000010", lty = 1)
+points(dat$x2, dat$f2, col = "red", cex = 0.1)
+

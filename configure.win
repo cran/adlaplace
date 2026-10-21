@@ -1,0 +1,6 @@
+#!/bin/sh
+# Windows entry point: R runs configure.win, not configure (Writing R Extensions).
+cd "$(dirname "$0")" || exit 1
+MAKEVARS_OUT=src/Makevars.win
+export MAKEVARS_OUT
+exec sh ./configure

@@ -1,0 +1,208 @@
+## ----setup, include=FALSE-----------------------------------------------------
+library(adlaplace)
+if (file.exists("vignette_full.R")) {
+  source("vignette_full.R", local = TRUE)
+} else {
+  vignette_full <- TRUE
+  vignette_num_threads <- 2L
+}
+fit_num_shards <- if (vignette_full) 200L else 8L
+fit_maxit <- if (vignette_full) 200L else 15L
+
+## ----data---------------------------------------------------------------------
+data("london", package = "adlaplace")
+if (!vignette_full) {
+  london <- london[london$year == 2003, ]
+}
+head(london)
+quantile(london$pm10, na.rm = TRUE)
+quantile(london$tmean, na.rm = TRUE)
+
+## ----model-spec---------------------------------------------------------------
+london$temp_div10 <- london$tmean / 10
+cc_formula <- dirichlet_multinom(
+  all,
+  by = c("year", "month", "dow"),
+  init = 0.02
+) ~ 0 + rh + iwp(
+  pm10,
+  p = 2,
+  knots = seq(0, 100, by = 10),
+  ref_value = 40,
+  init = 0.001
+) + iwp(
+  tmean,
+  p = 3, knots = seq(-2, 30, by = 2),
+  init = 0.001,
+  ref_value = 20
+)
+
+## ----fit----------------------------------------------------------------------
+fit <- adlaplace(
+  formula = cc_formula,
+  data = london,
+  config = list(
+    num_threads = vignette_num_threads,
+    num_shards = fit_num_shards
+  ),
+  control = list(
+    maxit = fit_maxit,
+    trace = 3, REPORT = 5
+  ),
+  verbose = FALSE, hessian = vignette_full
+)
+
+## ----summary------------------------------------------------------------------
+fit$par_info
+
+## ----fit-natural-scale, eval = vignette_full----------------------------------
+cc_formula_nat <- dirichlet_multinom(
+  all,
+  by = c("year", "month", "dow"),
+  init = 0.015,
+  lower = 0,
+  upper = 0.5,
+  parscale = 1e-3,
+  log = FALSE
+) ~ 0 + rh + iwp(
+  pm10,
+  p = 2,
+  knots = seq(0, 100, by = 10),
+  ref_value = 40,
+  init = 0.0001
+) + iwp(
+  tmean,
+  p = 3, knots = seq(-2, 30, by = 2),
+  init = 0.002,
+  ref_value = 20
+)
+
+fit_nat <- adlaplace(
+  formula = cc_formula_nat,
+  data = london,
+  config = list(
+    num_threads = vignette_num_threads,
+    num_shards = 100L
+  ),
+  control = list(
+    maxit = fit_maxit,
+    trace = 3, REPORT = 5,
+    factr = 1e3,
+    pgtol = 1e-8
+  ),
+  verbose = FALSE, hessian = vignette_full
+)
+
+all.equal(coef(fit), coef(fit_nat), tolerance = 1e-5)
+all.equal(as.numeric(logLik(fit)), as.numeric(logLik(fit_nat)), tolerance = 1e-5)
+
+## ----plot_results, eval = vignette_full---------------------------------------
+num_sim <- 200L
+num_grid <- 101L
+gamma_sims <- rmvnldl(n = num_sim, fit = fit)
+
+smooth_vars <- unique(fit$model_data$term_data$info$gamma$term)
+
+oldpar <- par(no.readonly = TRUE)
+par(mfrow = c(1, 2), mar = c(2.25, 2.25, 0, 0), bty = "l", mgp = c(1, 0.5, 0))
+for (D in smooth_vars) {
+  sim_here <- sim_random(
+    D,
+    fit = fit,
+    gamma_sims = gamma_sims,
+    num_grid = num_grid,
+    transform = exp
+  )
+  q <- if (!is.null(sim_here$global)) sim_here$global else sim_here$pointwise
+
+  matplot(
+    sim_here$x, sim_here$sim,
+    type = "l", lty = 1, col = "#00000010",
+    xlab = D, ylab = "RR", xaxs = "i", yaxs = "i",
+    ylim = quantile(sim_here$sim, prob = c(0.005, 0.95))
+  )
+  matlines(sim_here$x, q, lty = c(2, 1, 2), col = "red")
+}
+par(oldpar)
+
+## ----for_dev, eval = vignette_full--------------------------------------------
+md <- model_data(cc_formula, data = london, verbose = FALSE)
+config_dev <- list(
+  transform_theta = TRUE,
+  num_threads = vignette_num_threads,
+  verbose = FALSE
+)
+config_dev$obs_groups <- obs_groups(
+  A = md$term_data$A,
+  elgm_matrix = md$term_data$elgm_matrix,
+  num_shards = 50L,
+  min_shards = min(50L, 2L * 4L)
+)
+par_info <- md$term_data$info$parameters
+cache <- new.env(parent = emptyenv())
+cache$gamma <- rep(0, nrow(md$term_data$info$gamma))
+control_dev <- list(
+  maxit = 10, trace = 3, REPORT = 5,
+  parscale = par_info$parscale
+)
+control_inner <- list(report.level = 0)
+af <- ad_pack(md, config_dev, num_threads = vignette_num_threads)
+slotNames(af)
+dim(config_dev$obs_groups)
+par_info
+bob <- stats::optim(
+  par = par_info$init,
+  fn = outer_fn,
+  gr = outer_gr,
+  method = "L-BFGS-B",
+  control = control_dev,
+  lower = par_info$lower,
+  upper = par_info$upper,
+  config = config_dev,
+  ad_pack = af,
+  cache = cache,
+  control_inner = control_inner,
+  hessian = TRUE
+)
+
+## ----joint-log-dens, eval = vignette_full-------------------------------------
+sz <- af@sizes
+gamma0 <- rep(0, nrow(md$term_data$info$gamma))
+x_full <- c(
+  par_info$init[seq_len(sz["beta"])],
+  gamma0,
+  par_info$init[seq(sz["beta"] + 1L, length.out = sz["theta"])]
+)
+
+# Serial dens/grad/hess on a dens-safe clone (multi-thread affinity cleared).
+dens_ptr <- clone_ad_pack_ptr(af@ptr)
+shards <- seq.int(from = 0L, length.out = adlaplace:::n_groups(dens_ptr))
+by_shard <- vapply(
+  shards,
+  function(s) joint_log_dens(dens_ptr, x_full, ad_shards = s),
+  numeric(1)
+)
+by_shard[1:5]
+by_shard[seq(to = length(by_shard), length.out = 5)]
+
+sum(by_shard)
+joint_log_dens(dens_ptr, x_full)
+grad(dens_ptr, x_full)
+bob <- hessian(dens_ptr, x_full)
+
+## ----likelihood, eval = vignette_full-----------------------------------------
+x_outer <- par_info$init
+
+lik <- log_lik_laplace(
+  x = x_outer,
+  ad_pack = af,
+  config = modifyList(config_dev, list(verbose = TRUE)),
+  gamma = gamma0,
+  control = list(report.level = 2, report.freq = 1),
+  deriv = TRUE
+)
+
+lik$neg_log_lik
+lik$deriv$d_neg_log_lik
+head(lik$inner_opt$solution)
+

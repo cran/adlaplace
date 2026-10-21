@@ -1,0 +1,25 @@
+#!/bin/sh
+# Remove generated files that should not ship in the source tarball.
+
+rm -f src/Makevars src/Makevars.win
+
+# HTML vignette intermediates (recreated by knitr/rmarkdown)
+rm -rf vignettes/*_files
+rm -f vignettes/*.html
+rm -f vignettes/*.knit.md
+# Tangled vignette scripts only (keep shared helpers such as vignette_full.R)
+for _rmd in vignettes/*.Rmd; do
+  [ -f "$_rmd" ] || continue
+  _base=$(basename "$_rmd" .Rmd)
+  rm -f "vignettes/${_base}.R"
+done
+
+# testthat creates tests/testthat/_snaps/ even without snapshot tests; remove
+# only when empty (silent — avoids git "Removed empty directory" noise)
+_snaps=tests/testthat/_snaps
+if [ -d "$_snaps" ] && [ -z "$(ls -A "$_snaps" 2>/dev/null)" ]; then
+  rmdir "$_snaps" 2>/dev/null || true
+fi
+
+# Compiled objects anywhere under the package tree
+find . -type f \( -name '*.o' -o -name '*.so' -o -name '*.dll' \) -delete

@@ -1,0 +1,4 @@
+#!/bin/sh
+# Windows entry point: R runs cleanup.win, not cleanup (Writing R Extensions).
+cd "$(dirname "$0")" || exit 1
+exec sh ./cleanup

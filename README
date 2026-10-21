@@ -1,0 +1,62 @@
+# adlaplace
+
+Laplace approximations for hierarchical models using CppAD (via the
+**RCppAD** R package) and trust-region optimization.
+
+## Install
+
+From [R-universe](https://eborgnine.r-universe.dev) (binaries when available):
+
+```r
+install.packages(
+  c("RCppAD", "adlaplace"),
+  repos = c("https://eborgnine.r-universe.dev", "https://cloud.r-project.org")
+)
+```
+
+## Vignettes
+
+Built HTML vignettes (from CI):
+
+- [Index](https://eborgnine.github.io/adlaplace/)
+- [Laplace Approximations with adlaplace](https://eborgnine.github.io/adlaplace/adlaplace/adlaplace.html)
+- [Germany BYM example](https://eborgnine.github.io/adlaplace/adlaplace/germany.html)
+- [GAMM examples](https://eborgnine.github.io/adlaplace/adlaplace/gamm.html)
+- [Case-crossover models with adlaplace](https://eborgnine.github.io/adlaplace/adlaplace/casecrossover.html)
+- [Bayesian Bernoulli mixed model for the bacteria data](https://eborgnine.github.io/adlaplace/adlaplace/bacteria.html)
+- [Equivalence to Conditional Gamma-Poisson Model](https://eborgnine.github.io/adlaplace/adlaplace/dirichlet_multinom.html)
+
+## Dependencies
+
+- **RCppAD** — `Imports` + `LinkingTo`; provides `#include <cppad/cppad.hpp>`.
+  Install RCppAD before building this package. No system CppAD /
+  `libcppad_lib` is required.
+- **OpenMP** — recommended (`SystemRequirements: OpenMP`); configure enables
+  it when available. Without OpenMP, install still works and `num_threads`
+  is ignored.
+
+## Package layout
+
+| Layer | R | C++ |
+| ------- | --- | ----- |
+| Model (formula, S4 terms) | `effects.R`, `term_data_setup.R`, term `*.R` | — |
+| Laplace (AD handle, profile likelihood) | `ad_pack.R`, `density_data.R`, `log_lik.R`, … | `inner_opt`, … |
+| Engine (eval, optimizer) | `R/RcppExports.R` | `src/`, `src/include/adlaplace/` |
+
+Public headers for backend packages live in `inst/include/adlaplace/`.
+Private engine headers are in `src/include/adlaplace/`.
+
+Backend packages (e.g. `adlaplaceExample`, `adlaplaceFem`, `hpolcc`) should
+also `LinkingTo` / `Imports` **RCppAD**, and typically link against the
+installed `adlaplace` shared library.
+
+See the monorepo root [`README.md`](../README.md) for install order.
+
+## CRAN notes
+
+Vignettes are abbreviated during `R CMD check` on CRAN (`NOT_CRAN` unset) to
+keep rebuild time under 10 minutes; full HTML is built in CI and published at
+<https://eborgnine.github.io/adlaplace/>.
+No `-Wno-*` flags are used in `PKG_CXXFLAGS`. The Windows `-Wuninitialized`
+report was a real uninitialized read in CppAD's `sparse_rc` move constructor,
+fixed in RCppAD (>= 1.20260000.0-1).

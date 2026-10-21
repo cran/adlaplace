@@ -1,0 +1,182 @@
+---
+title: "Equivalence to Conditional Gamma-Poisson Model"
+author: "Patrick Brown"
+date: "`r Sys.Date()`"
+output:
+  rmarkdown::html_vignette:
+    toc: true
+vignette: >
+  %\VignetteIndexEntry{Equivalence to Conditional Gamma-Poisson Model}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+# Equivalence to Conditional Gamma-Poisson Model
+
+```{r setup, include=FALSE}
+if (file.exists("vignette_full.R")) {
+  source("vignette_full.R", local = TRUE)
+} else {
+  vignette_full <- TRUE
+  vignette_num_threads <- 2L
+}
+```
+
+The Dirichlet-multinomial distribution with parameter $\alpha$ is equivalent to a conditional Gamma-Poisson model. This equivalence provides an alternative interpretation and can be useful for understanding the properties of the distribution.
+
+Consider a Gamma-Poisson hierarchy where:
+
+1. $U_k \sim \text{Gamma}(\alpha, 1)$
+2. $\lambda_k =  \mu_k U_k$
+3. $y_k \mid \lambda_k \sim \text{Poisson}(\lambda_k)$ for $k = 1, \ldots, K$
+
+Given $\lambda_k$, the distribution of $y_k$ is Poisson:
+
+\begin{equation}
+y_k \mid \lambda_k \sim \text{Poisson}(\lambda_k)
+\end{equation}
+
+
+The distribution of $\mathbf{y}$ conditioned on the sum given the $\lambda_k$ is multinomial:
+
+\begin{equation}\label{eq:multinom}
+P(\mathbf{y} \mid \boldsymbol{\lambda}, \sum_{k=1}^K Y_k = N)
+=
+\frac{N!}{\prod_{k=1}^K y_k!}
+\prod_{k=1}^K
+\left(\frac{\lambda_k}{\sum_{j=1}^K \lambda_j}\right)^{y_k}
+\end{equation}
+
+Integrating out the $U_k$ gives the Dirichlet-multinomial distribution:
+
+\begin{equation}\label{eq:dm}
+P(\mathbf{y} \mid \alpha, \boldsymbol{\mu}, N)
+=
+\frac{N!}{\prod_{k=1}^K y_k!}
+\frac{\Gamma(\alpha)}{\Gamma(N+\alpha)}
+\prod_{k=1}^K
+\frac{\Gamma(y_k+\alpha \mu_k)}{\Gamma(\alpha \mu_k)}.
+\prod_{k=1}^K
+\frac{\Gamma(y_k+\alpha\mu_k)}{\Gamma(\alpha\mu_k)}.
+\end{equation}
+
+Note that $\text{E}(U_k) = 1$ and 
+$$
+\text{sd}(U_k) = 1/\sqrt(\alpha)
+$$
+
+## Simplificaiton
+
+Here is the simplification of the Dirichlet-multinomial PMF using the gamma recurrence identity.
+
+The key identity is the gamma recurrence over an integer number of steps:
+
+\begin{equation}\label{eq:gamma_ratio}
+\frac{\Gamma(x+n)}{\Gamma(x)}
+=
+x(x+1)\cdots(x+n-1)
+\end{equation}
+
+
+Equation \ref{eq:dm} becomes
+
+\begin{equation}\label{eq:dm_ratio}
+P(\mathbf{y} \mid \alpha, \boldsymbol{\mu}, N)
+=
+\frac{N!}{\prod_{k=1}^K y_k!}
+\frac{1}{\prod_{j=0}^{N-1} (\alpha + j)}
+\prod_{k=1}^K
+\prod_{j=0}^{y_k-1} (\alpha \mu_k + j)
+\end{equation}
+
+
+substitute 
+$$
+\alpha = \frac{1}{\tau^2}
+$$
+to give
+\begin{equation}\label{eq:dm_ratio_tau}
+P(\mathbf{y} \mid \tau, \boldsymbol{\mu}, N) =
+\frac{N!}{\prod_{k=1}^K y_k!}
+\frac{\tau^{2N}}{\prod_{j=0}^{N-1} (1 + j \tau^2)}
+\prod_{k=1}^K
+\frac{\prod_{j=0}^{y_k-1} (\mu_k + j \tau^2)}{\tau^{2y_k}}
+\end{equation}
+
+
+The $\tau^2$ cancel.  On the log scale:
+
+\begin{equation}\label{eq:dm_ratio_log}
+\log P(\mathbf{y} \mid \tau, \boldsymbol{\mu}, N)=
+\log(N!) - \sum_{k=1}^K \log(y_k!) - \sum_{j=0}^{N-1} \log(1 + j \tau^2) + \sum_{k=1}^K \sum_{j=0}^{y_k-1} \log(\mu_k + j \tau^2)
+\end{equation}
+
+Note that when $\tau = 0$ then 
+
+\begin{equation}\label{eq:dm_ratio_log_zero}
+\log P(\mathbf{y} \mid \tau=0, \boldsymbol{\mu}, N)=
+\log(N!) - \sum_{k=1}^K \log(y_k!) + \sum_{k=1}^K y_k \log(\mu_k)
+\end{equation}
+
+which is the multinomial density
+
+
+
+```{r testDirMn}
+K <- 6
+N <- 100 * K
+mu <- 2
+tau <- 0.2
+mu_vec <- rep(mu, K)
+alpha <- mu_vec / sum(mu_vec)
+
+U <- rgamma(N, shape = tau^(-2), rate = tau^(-2))
+c(mean(U), sd(U))
+lambda <- mu * U
+y <- rpois(N, lambda)
+
+cc_matrix <- Matrix::sparseMatrix(
+  i = 1:N, j = rep(seq(1, N / K), each = K), x = 1
+)
+
+mu_vec <- rep(mu, K)
+alpha_norm <- mu_vec / sum(mu_vec)
+alpha <- alpha_norm / tau^2
+
+log_dens_with_gammas <- log_dens_simplified <- rep(NA, ncol(cc_matrix))
+
+for (D in 1:ncol(cc_matrix)) {
+  # Extract the indices where the column has non-zero values
+  indices_here <- which(cc_matrix[, D] == 1)
+  y_here <- y[indices_here]
+
+  # Simplified log density using the sum formula
+  # Handle zeros correctly by filtering them out for the sum
+  y_double_sum <- mapply(seq,
+    len = y_here,
+    from = alpha_norm,
+    MoreArgs = list(by = tau^2)
+  )
+
+  log_dens_simplified[D] <-
+    lfactorial(sum(y_here)) -
+    sum(lfactorial(y_here)) -
+    sum(log(seq(from = 1, by = tau^2, len = sum(y_here)))) +
+    sum(log(unlist(y_double_sum)))
+
+  # Log density using Gamma functions
+  # lgamma is defined for all non-negative integers, so no special handling needed for zeros
+  log_dens_with_gammas[D] <-
+    lgamma(sum(alpha)) + lgamma(sum(y_here) + 1) -
+    lgamma(sum(y_here) + sum(alpha)) +
+    sum(lgamma(y_here + alpha)) -
+    sum(lgamma(alpha)) - sum(lgamma(y_here + 1))
+}
+```
+
+```{r plot}
+plot(log_dens_simplified, log_dens_with_gammas,
+  xlab = "simplified", ylab = "gammas"
+)
+abline(0, 1)
+```

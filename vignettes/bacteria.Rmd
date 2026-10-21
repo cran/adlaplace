@@ -1,0 +1,336 @@
+---
+title: "Bayesian Bernoulli mixed model for the bacteria data"
+author: "Patrick Brown"
+date: "`r Sys.Date()`"
+output:
+  rmarkdown::html_vignette:
+    toc: true
+vignette: >
+  %\VignetteIndexEntry{Bayesian Bernoulli mixed model for the bacteria data}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+library(adlaplace)
+if (file.exists("vignette_full.R")) {
+  source("vignette_full.R", local = TRUE)
+} else {
+  vignette_full <- TRUE
+  vignette_num_threads <- 2L
+}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 6,
+  fig.height = 4
+)
+if (!requireNamespace("MASS", quietly = TRUE) ||
+    !requireNamespace("aghq", quietly = TRUE)) {
+  knitr::knit_exit()
+}
+aghq_k <- if (vignette_full) 5L else 3L
+```
+
+This vignette fits a Bayesian Bernoulli GLMM to the `bacteria` data from
+**MASS**, then integrates the Laplace-approximate marginal posterior for the
+random-effect standard deviation with **aghq**. The formula interface hides
+the AD / Laplace details: known-SD Gaussian priors on the former fixed
+effects, an exponential prior on the child-level SD, and one call to
+`adlaplace()` followed by `aghq::aghq()`.
+
+## Data
+
+```{r data}
+data(bacteria, package = "MASS")
+bacteria$present <- as.integer(bacteria$y == "y")
+```
+
+There are 220 swabs on 50 children (`ID`), a three-level treatment, and
+follow-up `week` at 0, 2, 4, 6, and 11.
+
+```{r data-plot, fig.cap="Observed colonization rate by week and treatment."}
+rate <- aggregate(present ~ week + trt, data = bacteria, FUN = mean)
+cols <- c(placebo = "#4C78A8", drug = "#F58518", "drug+" = "#54A24B")
+
+plot(
+  present ~ week, data = rate, type = "n",
+  ylim = c(0, 1), ylab = "proportion present"
+)
+for (g in levels(bacteria$trt)) {
+  d <- rate[rate$trt == g, ]
+  lines(d$week, d$present, type = "b", pch = 19, col = cols[[g]])
+}
+legend("bottomleft", legend = names(cols), col = cols, pch = 19, lty = 1, bty = "n")
+```
+
+## Model
+
+The hierarchical model is
+
+\[
+\begin{aligned}
+y_{ij} &\sim \mathrm{Bernoulli}(p_{ij}), \\
+\mathrm{logit}(p_{ij}) &= \alpha + \mathbf{x}_{ij}^\top\boldsymbol{\beta} + u_i, \\
+\alpha, \beta_k &\sim N(0, 10^2), \\
+u_i &\sim N(0, \sigma^2), \\
+\sigma &\sim \mathrm{Exp}(\text{median} = 1).
+\end{aligned}
+\]
+
+Moving the intercept, treatment, and week coefficients into the random-effect
+block with known SDs leaves a **one-dimensional** outer parameter
+(\(\log\sigma\)). Nested Laplace then integrates the latent field; AGHQ
+integrates \(\log\sigma\).
+
+```{r fit}
+fit <- adlaplace(
+  binom(present) ~
+    intercept(sd = 10) +
+    linear(trt, sd = 10) +
+    linear(week, sd = 10) +
+    iid(ID, init = 1) +
+    prior(theta = 0, dist = "exp", median = 1),
+  data = bacteria
+)
+summary(fit)
+```
+
+`intercept(sd = 10)`, `linear(trt, sd = 10)`, and `linear(week, sd = 10)`
+are known-SD Gaussian priors (no estimated \(\theta\)). `iid(ID)` supplies
+the child intercepts and their SD. `prior(theta = 0, ...)` puts an exponential
+prior on the first (0-based) theta — here the only one, `ID_iid`.
+
+`adlaplace()` returns the MAP of \(\log\sigma\) under that prior. The outer
+vector has length one:
+
+```{r outer-dim}
+coef(fit)
+nrow(fit$par_info)
+```
+
+## Adaptive Gauss–Hermite quadrature
+
+`aghq_ff(fit)` wraps the same Laplace objective used by `adlaplace()` for
+**aghq**. Use `negate = TRUE` because the wrappers return the negated log
+posterior.
+
+```{r aghq}
+ff <- aghq_ff(fit)
+quad <- aghq::aghq(
+  ff = ff,
+  k = aghq_k,
+  startingvalue = fit$par_info$mle_internal,
+  control = aghq::default_control(negate = TRUE)
+)
+summary(quad)
+mode_log_sigma <- as.numeric(quad$optresults$mode)
+c(log_sigma = mode_log_sigma, sigma = exp(mode_log_sigma))
+```
+
+## Posterior of \(\sigma\)
+
+```{r sigma-plot, fig.cap="Normalized AGHQ nodes for the child-level SD."}
+naw <- quad$normalized_posterior$nodesandweights
+nodes <- as.numeric(naw[[1L]])
+w <- exp(as.numeric(naw$logpost_normalized))
+w <- w / sum(w)
+sigma <- exp(nodes)
+ord <- order(sigma)
+
+plot(
+  sigma[ord], w[ord],
+  type = "h", lwd = 3, col = "#4C78A8",
+  xlab = expression(sigma), ylab = "normalized weight"
+)
+abline(v = exp(mode_log_sigma), lty = 2)
+```
+
+The nested approximation for a coefficient \(\gamma_j\) (intercept, treatment,
+week) is a **mixture of normals**: at AGHQ node \(\theta_k = \log\sigma_k\)
+with weight \(w_k\),
+
+\[
+\gamma_j \mid \theta_k, y \;\approx\; N\bigl(\hat\gamma_j(\theta_k),\;
+[H(\theta_k)^{-1}]_{jj}\bigr),
+\qquad
+p(\gamma_j \mid y) \;\approx\; \sum_k w_k\, \varphi\bigl(\gamma_j;\,
+\hat\gamma_j(\theta_k),\, [H(\theta_k)^{-1}]_{jj}\bigr).
+\]
+
+```{r mixture-normals}
+gamma_info <- fit$model_data$term_data$info$gamma
+coef_idx <- which(gamma_info$model != "iid")
+coef_lab <- gamma_info$gamma_label[coef_idx]
+ctrl_mix <- list(
+  maxit = if (vignette_full) 100L else 20L,
+  report.level = 0,
+  report.freq = 0
+)
+
+mix_mean <- matrix(NA_real_, length(nodes), length(coef_idx))
+mix_sd <- mix_mean
+colnames(mix_mean) <- colnames(mix_sd) <- coef_lab
+gamma_start <- fit$gamma
+
+for (k in seq_along(nodes)) {
+  ll <- log_lik_laplace(
+    x = nodes[[k]],
+    ad_pack = fit$ad_pack,
+    config = fit$config,
+    gamma = gamma_start,
+    deriv = FALSE,
+    control = ctrl_mix
+  )
+  gamma_start <- ll$inner_opt$solution
+  names(gamma_start) <- names(fit$gamma)
+  half <- laplace_half_H_inv(ll)
+  mix_mean[k, ] <- gamma_start[coef_lab]
+  mix_sd[k, ] <- sqrt(Matrix::rowSums(half[coef_idx, , drop = FALSE]^2))
+}
+
+mix_dnorm <- function(x, mean, sd) {
+  dens <- vapply(
+    seq_along(w),
+    function(k) stats::dnorm(x, mean[[k]], sd[[k]]),
+    numeric(length(x))
+  )
+  as.numeric(dens %*% w)
+}
+
+mix_qnorm <- function(p, mean, sd) {
+  lo <- min(mean - 8 * sd)
+  hi <- max(mean + 8 * sd)
+  stats::uniroot(
+    function(q) sum(w * stats::pnorm(q, mean, sd)) - p,
+    lower = lo,
+    upper = hi
+  )$root
+}
+
+pretty_coef <- function(lab) {
+  if (identical(lab, "intercept")) {
+    return("intercept")
+  }
+  if (startsWith(lab, "trt_linear_")) {
+    lev <- sub("^trt_linear_trt", "", lab)
+    return(paste0("trt: ", lev, " vs placebo"))
+  }
+  if (startsWith(lab, "week_linear_")) {
+    return("week")
+  }
+  lab
+}
+```
+
+```{r intercept-trt-plot, fig.cap="Marginal posteriors of the intercept and treatment contrasts (mixture of Laplace Gaussians over AGHQ nodes)."}
+int_lab <- coef_lab[gamma_info$model[coef_idx] == "intercept"]
+trt_lab <- coef_lab[gamma_info$term[coef_idx] == "trt"]
+
+oldpar <- par(no.readonly = TRUE)
+par(mfrow = c(1, 2), mar = c(4, 4, 1.5, 0.5))
+
+int_m <- mix_mean[, int_lab]
+int_s <- mix_sd[, int_lab]
+xr <- seq(min(int_m - 4 * int_s), max(int_m + 4 * int_s), length.out = 200)
+plot(
+  xr, mix_dnorm(xr, int_m, int_s),
+  type = "l", lwd = 2, col = "#4C78A8",
+  xlab = "intercept", ylab = "density"
+)
+
+trt_cols <- unname(cols[c("drug", "drug+")])
+lo_trt <- mix_mean[, trt_lab, drop = FALSE] - 4 * mix_sd[, trt_lab, drop = FALSE]
+hi_trt <- mix_mean[, trt_lab, drop = FALSE] + 4 * mix_sd[, trt_lab, drop = FALSE]
+xg <- seq(min(lo_trt), max(hi_trt), length.out = 200)
+dens_trt <- lapply(trt_lab, function(lab) {
+  mix_dnorm(xg, mix_mean[, lab], mix_sd[, lab])
+})
+ymax <- max(unlist(dens_trt))
+plot(
+  xg, dens_trt[[1]],
+  type = "l", lwd = 2, col = trt_cols[[1]],
+  xlab = "treatment effect (logit)", ylab = "density",
+  ylim = c(0, ymax)
+)
+if (length(trt_lab) > 1L) {
+  lines(xg, dens_trt[[2]], lwd = 2, col = trt_cols[[2]])
+}
+legend(
+  "topright",
+  legend = vapply(trt_lab, pretty_coef, character(1)),
+  col = trt_cols[seq_along(trt_lab)],
+  lty = 1, lwd = 2, bty = "n"
+)
+par(oldpar)
+```
+
+Posterior quantiles invert the mixture CDF. The child-level SD uses the AGHQ
+nodes (a discrete mixture on \(\log\sigma\)). Child-specific IID intercepts
+are omitted.
+
+```{r posterior-quantiles}
+probs <- c(0.025, 0.5, 0.975)
+q_coef <- t(vapply(
+  coef_lab,
+  function(lab) {
+    vapply(probs, mix_qnorm, numeric(1), mean = mix_mean[, lab], sd = mix_sd[, lab])
+  },
+  numeric(length(probs))
+))
+sigma_q <- vapply(probs, function(p) {
+  o <- order(sigma)
+  cw <- cumsum(w[o])
+  sigma[o][which(cw >= p)[1L]]
+}, numeric(1))
+
+post_q <- data.frame(
+  parameter = c(vapply(coef_lab, pretty_coef, character(1)), "sigma (ID)"),
+  `2.5%` = c(q_coef[, 1L], sigma_q[[1L]]),
+  `50%` = c(q_coef[, 2L], sigma_q[[2L]]),
+  `97.5%` = c(q_coef[, 3L], sigma_q[[3L]]),
+  check.names = FALSE
+)
+knitr::kable(post_q, digits = 3)
+```
+
+## Fitted probabilities and child effects
+
+Subject-specific fitted probabilities at the MAP use `fitted(fit)` (modes of
+all random effects, including the former fixed effects).
+
+```{r fitted-plot, fig.cap="Mean fitted probability by week and treatment (lines), with observed rates as points."}
+bacteria$p_hat <- plogis(fitted(fit))
+fit_rate <- aggregate(p_hat ~ week + trt, data = bacteria, FUN = mean)
+
+plot(
+  p_hat ~ week, data = fit_rate, type = "n",
+  ylim = c(0, 1), ylab = "probability present"
+)
+for (g in levels(bacteria$trt)) {
+  d <- fit_rate[fit_rate$trt == g, ]
+  o <- rate[rate$trt == g, ]
+  lines(d$week, d$p_hat, col = cols[[g]], lwd = 2)
+  points(o$week, o$present, col = cols[[g]], pch = 19)
+}
+legend("bottomleft", legend = names(cols), col = cols, lty = 1, lwd = 2, pch = 19, bty = "n")
+```
+
+```{r re-intervals, fig.cap="Child random intercepts, ordered, with 80% pointwise intervals."}
+set.seed(1)
+re <- sim_iid(fit, n = if (vignette_full) 400L else 80L)
+pw <- re$ID$pointwise
+ord <- order(pw[, "0.5"])
+pw <- pw[ord, ]
+idx <- seq_along(ord)
+
+plot(
+  idx, pw[, "0.5"],
+  ylim = range(pw),
+  xlab = "child (ordered by median)",
+  ylab = "random intercept",
+  pch = 19, cex = 0.6
+)
+arrows(idx, pw[, "0.1"], idx, pw[, "0.9"], length = 0, col = "grey50")
+abline(h = 0, lty = 2)
+```

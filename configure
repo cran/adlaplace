@@ -1,0 +1,69 @@
+#!/bin/sh
+# configure: generate src/Makevars from src/Makevars.in (optional OpenMP)
+
+set -eu
+
+VERBOSE="${ADLAPLACE_CONFIGURE_VERBOSE:-0}"
+msg() {
+  if [ "$VERBOSE" = "1" ]; then
+    echo "$@"
+  fi
+  return 0
+}
+
+SCRIPT_DIR="$(cd "$(dirname "$0")/inst/scripts" && pwd)"
+WARN_CXXFLAGS=""
+. "$SCRIPT_DIR/backend-configure.sh"
+
+DEBUG_CXXFLAGS=""
+CPPAD_ASSERT=""
+for flags in "${PKG_CXXFLAGS:-}" "${CXXFLAGS:-}" "${CPPFLAGS:-}"; do
+  case " $flags " in
+    *" -DDEBUG "*|*" -DDEBUG=1 "*)
+      case " $DEBUG_CXXFLAGS " in
+        *" -DDEBUG "*) ;;
+        *) DEBUG_CXXFLAGS="${DEBUG_CXXFLAGS:+$DEBUG_CXXFLAGS }-DDEBUG" ;;
+      esac
+      ;;
+  esac
+  case " $flags " in
+    *" -DADLAPLACE_CPPAD_ASSERT "*|*" -DADLAPLACE_CPPAD_ASSERT=1 "*)
+      CPPAD_ASSERT=1
+      ;;
+  esac
+done
+# -UNDEBUG overrides R's usual -DNDEBUG so CppAD thread_alloc asserts fire.
+# Place after -DNDEBUG in the final compile line (PKG_CXXFLAGS in Makevars.in).
+if [ -n "$CPPAD_ASSERT" ]; then
+  DEBUG_CXXFLAGS="${DEBUG_CXXFLAGS:+$DEBUG_CXXFLAGS }-UNDEBUG -DADLAPLACE_CPPAD_ASSERT"
+  echo "configure: adlaplace CppAD assert build enabled (-UNDEBUG; cross-thread return_memory checks)" >&2
+fi
+if [ -n "$DEBUG_CXXFLAGS" ] && [ -z "$CPPAD_ASSERT" ]; then
+  case " $DEBUG_CXXFLAGS " in
+    *" -DDEBUG "*)
+      echo "configure: adlaplace DEBUG build enabled (-DDEBUG; thread-affinity checks active)" >&2
+      ;;
+  esac
+fi
+
+infile="src/Makevars.in"
+# Unix: src/Makevars; Windows configure.win sets MAKEVARS_OUT=src/Makevars.win
+outfile="${MAKEVARS_OUT:-src/Makevars}"
+
+if [ ! -f "$infile" ]; then
+  echo "configure: ERROR: $infile not found" >&2
+  exit 1
+fi
+
+esc_sed () { printf '%s' "$1" | sed 's/[\/&]/\\&/g'; }
+
+sed \
+  -e "s/@OPENMP_CPPFLAGS@/$(esc_sed "$OPENMP_CPPFLAGS")/g" \
+  -e "s/@OPENMP_CXXFLAGS@/$(esc_sed "$OPENMP_CXXFLAGS")/g" \
+  -e "s/@OPENMP_LIBS@/$(esc_sed "$OPENMP_LIBS")/g" \
+  -e "s/@DEBUG_CXXFLAGS@/$(esc_sed "$DEBUG_CXXFLAGS")/g" \
+  -e "s/@WARN_CXXFLAGS@/$(esc_sed "${WARN_CXXFLAGS:-}")/g" \
+"$infile" > "$outfile"
+
+chmod 644 "$outfile"
+exit 0
