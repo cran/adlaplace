@@ -267,11 +267,27 @@ CppAD::vector<CppAD::AD<double>> compute_eta_for_stratum(
   return etaHere;
 }
 
+// log(exp(a) + exp(b)), stable for large negative inputs. CondExpGt is
+// nondifferentiable on a == b, but the log-sum-exp correction restores the
+// softmax derivative there (including the tie).
+CppAD::AD<double> logaddexp(
+  const CppAD::AD<double>& a,
+  const CppAD::AD<double>& b) {
+
+  const CppAD::AD<double> m = CppAD::CondExpGt(a, b, a, b);
+  return m + CppAD::log(CppAD::exp(a - m) + CppAD::exp(b - m));
+}
+
+struct TauScale {
+  CppAD::AD<double> tau_sq;
+  CppAD::AD<double> log_tau_sq;
+};
+
 CppAD::AD<double> accumulate_contrib_for_stratum(
   const size_t Dstrata,
   const density_data& model,
   const CppAD::vector<CppAD::AD<double>>& etaHere,
-  const CppAD::AD<double>& tauSq) {
+  const CppAD::AD<double>& logTauSq) {
 
   const size_t startHere = model.elgm_matrix.p[Dstrata];
   const size_t endHere = model.elgm_matrix.p[Dstrata + 1];
@@ -288,11 +304,13 @@ CppAD::AD<double> accumulate_contrib_for_stratum(
       const CppAD::AD<double> logMuKhere = etaHere[j] - etaLogSum;
       contrib += logMuKhere;
 
+      // log(mu_k + i * tau^2) via logaddexp so a tiny tau does not underflow
+      // to log(0), whose higher-order Taylor coefficients are NaN.
       if (yhere > 1) {
-        const CppAD::AD<double> expMuKhere = CppAD::exp(logMuKhere);
         for (int i = 1; i < yhere; ++i) {
-          const CppAD::AD<double> to_log = expMuKhere + static_cast<double>(i) * tauSq;
-          contrib += CppAD::log(to_log);
+          const CppAD::AD<double> log_i_tau =
+            std::log(static_cast<double>(i)) + logTauSq;
+          contrib += logaddexp(logMuKhere, log_i_tau);
         }
       }
     }
@@ -301,7 +319,7 @@ CppAD::AD<double> accumulate_contrib_for_stratum(
   return contrib;
 }
 
-CppAD::AD<double> tau_sq_from_x(
+TauScale tau_scale_from_x(
   const CppAD::vector<CppAD::AD<double>>& x,
   const density_data& model,
   const Config& config) {
@@ -309,9 +327,11 @@ CppAD::AD<double> tau_sq_from_x(
   const std::size_t t_global = model.theta_index(0);
   const std::size_t t_row = model.theta_row(0);
   const CppAD::AD<double> tau_in = x[t_global];
-  const CppAD::AD<double> tau =
-    transform_theta_at(config, t_row) ? CppAD::exp(tau_in) : tau_in;
-  return tau * tau;
+  if (transform_theta_at(config, t_row)) {
+    // tau_in = log(tau); keep log(tau^2) = 2 log(tau) before exponentiating.
+    return TauScale{CppAD::exp(2.0 * tau_in), 2.0 * tau_in};
+  }
+  return TauScale{tau_in * tau_in, 2.0 * CppAD::log(tau_in)};
 }
 
 }  // namespace
@@ -329,7 +349,7 @@ CppAD::vector<CppAD::AD<double>> dirichlet_multinomial(
   const size_t startP = have_shards ? config.obs_groups.p[Dgroup] : Dgroup;
   const size_t endP = have_shards ? config.obs_groups.p[Dgroup + 1] : Dgroup + 1;
 
-  const CppAD::AD<double> tauSq = tau_sq_from_x(x, model, config);
+  const TauScale tau_scale = tau_scale_from_x(x, model, config);
   const bool verbose_here = config.verbose && (Dgroup < 1);
 
   if (verbose_here) {
@@ -339,7 +359,8 @@ CppAD::vector<CppAD::AD<double>> dirichlet_multinomial(
   for (size_t DstrataI = startP; DstrataI < endP; ++DstrataI) {
     const size_t Dstrata = have_shards ? config.obs_groups.i[DstrataI] : DstrataI;
     const auto etaHere = compute_eta_for_stratum(Dstrata, model, x);
-    const auto contrib = accumulate_contrib_for_stratum(Dstrata, model, etaHere, tauSq);
+    const auto contrib = accumulate_contrib_for_stratum(
+      Dstrata, model, etaHere, tau_scale.log_tau_sq);
 
     if (verbose_here) {
       Rcpp::Rcout << "strata " << Dstrata << " contrib " << contrib << "\n";
@@ -361,7 +382,7 @@ CppAD::vector<CppAD::AD<double>> dirichlet_multinomial_extra(
   const density_data& model,
   const Config& config) {
 
-  const CppAD::AD<double> tauSq = tau_sq_from_x(x, model, config);
+  const TauScale tau_scale = tau_scale_from_x(x, model, config);
   const size_t Nstrata = static_cast<size_t>(model.elgm_matrix.ncol());
 
   CppAD::AD<double> contribLog1pjTauSq = 0.0;
@@ -381,14 +402,17 @@ CppAD::vector<CppAD::AD<double>> dirichlet_multinomial_extra(
     contribLogNfact += std::lgamma(1.0 + sumYhere);
     const size_t sumYhereS = static_cast<size_t>(sumYhere);
     for (size_t Dsum = 1; Dsum < sumYhereS; ++Dsum) {
-      contribLog1pjTauSq += CppAD::log1p(static_cast<double>(Dsum) * tauSq);
+      // log(1 + i * tau^2) = log(exp(0) + exp(log(i) + log(tau^2)))
+      contribLog1pjTauSq += logaddexp(
+        CppAD::AD<double>(0.0),
+        std::log(static_cast<double>(Dsum)) + tau_scale.log_tau_sq);
     }
   }
 
   const CppAD::AD<double> contrib = contribLogNfact - contribLogYkFact - contribLog1pjTauSq;
 
   if (config.verbose) {
-    Rcpp::Rcout << "logDensExtra " << contrib << " tauSq " << tauSq
+    Rcpp::Rcout << "logDensExtra " << contrib << " tauSq " << tau_scale.tau_sq
       << " contribLogNfact " << contribLogNfact
       << " contribLogYkFact " << contribLogYkFact
       << " contribLog1pjTauSq " << contribLog1pjTauSq << "\n";

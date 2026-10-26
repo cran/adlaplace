@@ -196,6 +196,7 @@ ensure_config_obs_groups <- function(
   n_domain = NULL
 ) {
   if (!is.null(config[["obs_groups"]])) {
+    config$obs_groups <- as_obs_groups(config[["obs_groups"]])
     return(config)
   }
 
@@ -313,31 +314,46 @@ ensure_config_obs_groups <- function(
 #' G
 #' @export
 obs_groups <- function(A, elgm_matrix, num_shards, min_shards = 0) {
-  ATp <- Matrix::t(A)
+  if (!missing(elgm_matrix)) {
+    if (is.null(nrow(A)) || nrow(elgm_matrix) != nrow(A)) {
+      stop(
+        "nrow(elgm_matrix) (", nrow(elgm_matrix),
+        ") must match nrow(A) (", if (is.null(nrow(A))) "NA" else nrow(A), ")",
+        call. = FALSE
+      )
+    }
+    # Basis j reaches district k when some cell in its support belongs to
+    # that district. Both patterns repeat row keys (several basis functions
+    # per cell, a cell in more than one district), so this is a many-to-many
+    # relation. A data.table join of those keys trips the cartesian guard;
+    # the pattern product deduplicates and checks dimensions.
+    if (!methods::is(A, "Matrix")) {
+      A <- Matrix::Matrix(A, sparse = TRUE)
+    }
+    if (!methods::is(elgm_matrix, "Matrix")) {
+      elgm_matrix <- Matrix::Matrix(elgm_matrix, sparse = TRUE)
+    }
+    A_pat <- methods::as(as_ngC(A), "dMatrix")
+    E_pat <- methods::as(as_ngC(elgm_matrix), "dMatrix")
+    ATp <- methods::as(
+      methods::as(Matrix::t(A_pat) %*% E_pat, "generalMatrix"),
+      "CsparseMatrix"
+    )
+    if (length(ATp@x)) {
+      ATp@x[] <- 1
+    }
+    ATp <- Matrix::drop0(ATp)
+    if (Matrix::nnzero(ATp) == 0L) {
+      stop(
+        "obs_groups: elgm_matrix and A have no overlapping cells",
+        call. = FALSE
+      )
+    }
+  } else {
+    ATp <- Matrix::t(A)
+  }
   if (missing(num_shards)) {
     num_shards <- ncol(ATp)
-  }
-
-  if (!missing(elgm_matrix)) {
-    ATp_t <- methods::as(Matrix::Matrix(ATp), "TsparseMatrix")
-    ATp_t <- data.frame(row = ATp_t@j, gamma = ATp_t@i)
-    elgm_matrix_t <- methods::as(elgm_matrix, "TsparseMatrix")
-    elgm_matrix_t <- data.frame(row = elgm_matrix_t@i, strata = elgm_matrix_t@j)
-
-    data.table::setDT(ATp_t)
-    data.table::setDT(elgm_matrix_t)
-
-    A_elgm_merge <- merge(ATp_t, elgm_matrix_t)
-    A_elgm_merge <- A_elgm_merge[, c("gamma", "strata")]
-    A_elgm_merge <- A_elgm_merge[!duplicated(A_elgm_merge), ]
-    A_elgm_merge <- A_elgm_merge[order(A_elgm_merge$strata, A_elgm_merge$gamma), ]
-
-    ATp <- Matrix::sparseMatrix(
-      i = A_elgm_merge$gamma,
-      j = A_elgm_merge$strata,
-      x = rep(1.0, nrow(A_elgm_merge)),
-      index1 = FALSE, dims = c(nrow(ATp), ncol(elgm_matrix))
-    )
   }
 
   if (inherits(ATp, "ngCMatrix")) {

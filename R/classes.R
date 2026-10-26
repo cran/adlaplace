@@ -26,7 +26,11 @@ NULL
 #'   local \code{A} columns into the global gamma block.
 #' @slot theta_map Theta parameter map (\code{ngCMatrix}). Column \code{j}
 #'   selects global theta row \code{r} for this shard's theta component \code{j}.
-#' @slot elgm_matrix Optional exposure-lag map (\code{ngCMatrix}; empty by default).
+#' @slot elgm_matrix Optional exposure-lag map (\code{CsparseMatrix}). A pattern
+#'   matrix (\code{ngCMatrix}) marks membership. A numeric \code{dgCMatrix}
+#'   stores a weight on each entry, such as population in a cell-region
+#'   intersection. Rows index either observations or design cells; columns
+#'   index strata or aggregated units. Empty by default.
 #' @slot density Registered AD density name for this shard.
 #' @slot ad_kind Shard kind (\code{"observations"}, \code{"parameters"}, \code{"random"}).
 #' @slot package Package name whose shared library records tapes for this shard
@@ -34,7 +38,7 @@ NULL
 #' @slot precision Optional precision payload (any R object).
 #' @slot weights Optional per-observation weights (e.g. binomial trial counts).
 #'   Empty means all ones.
-#' @importClassesFrom Matrix Matrix ngCMatrix
+#' @importClassesFrom Matrix Matrix CsparseMatrix ngCMatrix dgCMatrix
 #' @exportClass density_data
 setClass(
   "density_data",
@@ -45,7 +49,7 @@ setClass(
     beta_map = "ngCMatrix",
     gamma_map = "ngCMatrix",
     theta_map = "ngCMatrix",
-    elgm_matrix = "ngCMatrix",
+    elgm_matrix = "CsparseMatrix",
     density = "character",
     ad_kind = "character",
     package = "character",
@@ -53,7 +57,8 @@ setClass(
     weights = "numeric"
   ),
   prototype = prototype(
-    weights = numeric(0)
+    weights = numeric(0),
+    elgm_matrix = methods::new("ngCMatrix")
   )
 )
 
@@ -224,6 +229,12 @@ setGeneric("random_info", function(term, data) standardGeneric("random_info"))
 #' @rdname model-generics
 #' @export
 setGeneric("elgm_matrix", function(term, data) standardGeneric("elgm_matrix"))
+#' @rdname model-generics
+#' @export
+setGeneric(
+  "observation_response",
+  function(term, data) standardGeneric("observation_response")
+)
 
 #' @rdname model-generics
 #' @export
@@ -253,6 +264,23 @@ setMethod("beta_info", "model_term", function(term, data) {
 #' @export
 setMethod("random_info", "model_term", function(term, data) {
   NULL
+})
+
+#' Response vector for an observation term.
+#'
+#' Default reads \code{data[[term@name]]}. Aggregated terms override this when
+#' the counts are not one row of \code{data} (district totals on cell-level
+#' designs). \code{NULL} means the column is absent.
+#' @param term A model term.
+#' @param data A data frame.
+#' @return A numeric vector, or \code{NULL}.
+#' @rdname model-generics
+#' @export
+setMethod("observation_response", "model_term", function(term, data) {
+  if (!length(term@name) || !term@name %in% names(data)) {
+    return(NULL)
+  }
+  as.numeric(data[[term@name]])
 })
 
 #' Optional companion parameters density name for a random term

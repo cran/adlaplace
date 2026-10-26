@@ -4,7 +4,7 @@
 \alias{design_Tp}
 \title{Transpose of a design matrix for \code{ATp} / \code{XTp} slots.}
 \usage{
-design_Tp(M, n_obs, what = "M")
+design_Tp(M, n_rows, what = "M")
 }
 \description{
 Transpose of a design matrix for \code{ATp} / \code{XTp} slots.

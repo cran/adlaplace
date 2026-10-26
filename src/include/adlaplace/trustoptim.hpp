@@ -2,6 +2,10 @@
 #define ADLAPLACE_TRUSTOPTIM_HPP
 
 #include<Rcpp.h>
+#include <cstddef>
+#include <mutex>
+#include <stdexcept>
+#include <string>
 
 // Small helpers with defaults
 inline double get_double_ctrl(const Rcpp::List& ctl,
@@ -137,6 +141,8 @@ struct AD_Func_Opt {
             ": before OpenMP threads=" + std::to_string(num_threads) +
             " shards=" + std::to_string(n_shards_backend));
 
+    adlaplace_cppad_err_reset();
+    std::string cppad_err;
 #pragma omp parallel num_threads(num_threads)
     {
       double f_local = 0.0;
@@ -150,6 +156,7 @@ struct AD_Func_Opt {
         }
       }
 
+      try {
       for (size_t s : shard_group) {
         ad_shard *shard = shards->fun[s];
         AdTape &pack = shard->pack;
@@ -160,7 +167,22 @@ struct AD_Func_Opt {
               inner ? "inner_opt get_f" : "inner_opt get_f");
           continue;
         }
-        (void)shard->f(params_local.data(), &f_local);
+        const int rc = shard->f(params_local.data(), &f_local);
+        if (rc != 0) {
+#pragma omp critical(adlaplace_api_err)
+          {
+            if (cppad_err.empty()) {
+              cppad_err = "shard f failed with code " + std::to_string(rc);
+            }
+          }
+          continue;
+        }
+      }
+      } catch (const std::exception &e) {
+#pragma omp critical(adlaplace_api_err)
+        {
+          if (cppad_err.empty()) cppad_err = e.what();
+        }
       }
 
 #pragma omp critical(f_sum)
@@ -170,6 +192,9 @@ struct AD_Func_Opt {
     }
 
     adlaplace_debug_raise_if_any(inner ? "inner_opt get_f" : "inner_opt get_f");
+    if (!cppad_err.empty()) {
+      throw std::runtime_error(cppad_err);
+    }
     adlaplace_verbose_msg(
         verbose,
         std::string(inner ? "inner_opt get_f" : "outer get_f") +
@@ -195,6 +220,8 @@ struct AD_Func_Opt {
             std::to_string(num_threads) + " Nparams=" + std::to_string(Nparams) +
             " shards=" + std::to_string(n_shards_backend));
 
+    adlaplace_cppad_err_reset();
+    std::string cppad_err;
 #pragma omp parallel num_threads(num_threads)
     {
       double f_local = 0.0;
@@ -209,6 +236,7 @@ struct AD_Func_Opt {
         }
       }
 
+      try {
       for (size_t s : shard_group) {
         ad_shard *shard = shards->fun[s];
         AdTape &pack = shard->pack;
@@ -219,8 +247,24 @@ struct AD_Func_Opt {
           adlaplace_debug_note_grad_mismatch(grad_local.data(), Nparams);
           continue;
         }
-        (void)shard->f_grad(params_local.data(), inner_flag, &f_local,
-                            grad_local.data());
+        const int rc = shard->f_grad(params_local.data(), inner_flag, &f_local,
+                                     grad_local.data());
+        if (rc != 0) {
+#pragma omp critical(adlaplace_api_err)
+          {
+            if (cppad_err.empty()) {
+              cppad_err =
+                  "shard f_grad failed with code " + std::to_string(rc);
+            }
+          }
+          continue;
+        }
+      }
+      } catch (const std::exception &e) {
+#pragma omp critical(adlaplace_api_err)
+        {
+          if (cppad_err.empty()) cppad_err = e.what();
+        }
       }
 
 #pragma omp critical(grad_sum)
@@ -233,6 +277,9 @@ struct AD_Func_Opt {
     }
 
     adlaplace_debug_raise_if_any(phase);
+    if (!cppad_err.empty()) {
+      throw std::runtime_error(cppad_err);
+    }
     adlaplace_verbose_msg(verbose, std::string(phase) + ": after OpenMP");
     const size_t gsize = static_cast<size_t>(gout.size());
     const size_t ncopy = gsize < nvars_opt ? gsize : nvars_opt;
@@ -272,6 +319,8 @@ struct AD_Func_Opt {
 #endif
 
     int parallel_team = 1;
+    adlaplace_cppad_err_reset();
+    std::string cppad_err;
 #pragma omp parallel num_threads(num_threads)
     {
 #pragma omp single
@@ -291,6 +340,7 @@ struct AD_Func_Opt {
         }
       }
 
+      try {
       for (size_t s : shard_group) {
         ad_shard *shard = shards->fun[s];
         AdTape &pack = shard->pack;
@@ -320,6 +370,12 @@ struct AD_Func_Opt {
           hess_thread[k] += hess_local[k];
         }
       }
+      } catch (const std::exception &e) {
+#pragma omp critical(adlaplace_api_err)
+        {
+          if (cppad_err.empty()) cppad_err = e.what();
+        }
+      }
 
 #pragma omp critical(hess_sum)
       {
@@ -345,9 +401,20 @@ struct AD_Func_Opt {
     }
 #endif
 
+    if (!cppad_err.empty()) {
+      throw std::runtime_error(cppad_err);
+    }
     if (api_err_shard >= 0) {
-      Rcpp::stop("%s: f_grad_hess failed for shard %d with code %d", phase,
-                 api_err_shard, api_err_rc);
+      std::string detail;
+      {
+        std::lock_guard<std::mutex> lock(adlaplace_cppad_err_mu());
+        detail = adlaplace_cppad_err_msg();
+      }
+      throw std::runtime_error(
+          std::string(phase) + ": f_grad_hess failed for shard " +
+          std::to_string(api_err_shard) + " with code " +
+          std::to_string(api_err_rc) +
+          (detail.empty() ? std::string() : std::string(": ") + detail));
     }
 
     adlaplace_debug_raise_if_any(phase);

@@ -549,6 +549,8 @@ Rcpp::List inner_opt(const Rcpp::NumericVector parameters,
     return out;
   } catch (const Rcpp::exception &e) {
     Rcpp::stop("inner_opt failed: %s", e.what());
+  } catch (const std::exception &e) {
+    Rcpp::stop("inner_opt failed: %s", e.what());
   } catch (...) {
     Rcpp::stop("inner_opt failed with unknown error");
   }

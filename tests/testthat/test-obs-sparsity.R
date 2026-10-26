@@ -123,7 +123,7 @@ glm_obs_setup <- function(family, compact_tape = TRUE, n = 36L, n_re = 8L,
     compact_tape = compact_tape,
     verbose = FALSE
   )
-  model <- adlaplace:::density_data(
+  model <- adlaplace::density_data(
     y = y,
     A = A,
     X = X,
@@ -198,7 +198,8 @@ test_that("dirichlet_multinomial analytic Hessian uses per-stratum cliques", {
   og <- obs_groups(
     md$term_data$A,
     elgm_matrix = md$term_data$elgm_matrix,
-    num_shards = 4L
+    num_shards = 4L,
+    min_shards = 4L
   )
   expect_equal(ncol(og), 4L)
 

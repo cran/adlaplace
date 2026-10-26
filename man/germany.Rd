@@ -34,7 +34,8 @@ effect. The bundled ICAR precision \code{Q_scaled} is the INLA
 District boundaries are not stored in this object (to avoid a hard
 dependency on \pkg{terra}). They ship as
 \code{system.file("extdata", "germany_map.gpkg", package = "adlaplace")}
-and can be loaded with \code{terra::vect(...)} when \pkg{terra} is installed.
+in ETRS89 / LCC Germany (\code{EPSG:4839}) and can be loaded with
+\code{terra::vect(...)} when \pkg{terra} is installed.
 }
 \references{
 Besag, J., York, J., and Mollie, A. (1991). Bayesian image restoration,

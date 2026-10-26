@@ -4,8 +4,31 @@
 #include <cppad/cppad.hpp>
 #include <Rcpp.h>
 #include <Eigen/SparseCore>
+#include <atomic>
 #include <cstddef>
+#include <mutex>
+#include <string>
 #include <vector>
+
+// Process-wide within this DSO. The CppAD error handler records a failure
+// here instead of throwing out of an OpenMP worker.
+inline std::atomic<int> &adlaplace_cppad_err_flag() {
+  static std::atomic<int> flag{0};
+  return flag;
+}
+inline std::mutex &adlaplace_cppad_err_mu() {
+  static std::mutex mu;
+  return mu;
+}
+inline std::string &adlaplace_cppad_err_msg() {
+  static std::string msg;
+  return msg;
+}
+inline void adlaplace_cppad_err_reset() {
+  adlaplace_cppad_err_flag().store(0, std::memory_order_relaxed);
+  std::lock_guard<std::mutex> lock(adlaplace_cppad_err_mu());
+  adlaplace_cppad_err_msg().clear();
+}
 
 #include "adlaplace/density_data.hpp"
 #include "adlaplace/rviews.hpp"

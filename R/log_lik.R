@@ -158,6 +158,17 @@ outer_gr <- function(
   result$d_neg_log_lik
 }
 
+# A warm-started gamma can leave the inner trust region at a point whose
+# Hessian is not usable. One cold start is enough to recover the mode.
+outer_laplace_bad <- function(result, n_par) {
+  if (inherits(result, "error")) {
+    return(TRUE)
+  }
+  nll <- result$neg_log_lik
+  d_neg <- as.numeric(result$deriv$d_neg_log_lik)
+  !is.finite(nll) || length(d_neg) != n_par || any(!is.finite(d_neg))
+}
+
 #' Combined outer Laplace evaluation with per-\code{x} cache
 #'
 #' Calls \code{inner_opt(..., deriv = TRUE, return_hessians = FALSE)} so the
@@ -211,15 +222,49 @@ warn_if_inner_status <- function(result) {
     message("outer_fg: calling inner_opt(deriv=TRUE, return_hessians=FALSE)...")
     utils::flush.console()
   }
-  result <- adlaplace::inner_opt(
-    parameters = x_num,
-    gamma = cache$gamma,
-    control = control_inner,
-    ad_pack = ad_pack,
-    deriv = TRUE,
-    return_hessians = FALSE,
-    verbose = isTRUE(config[["verbose"]])
-  )
+  call_inner <- function(gamma) {
+    tryCatch(
+      adlaplace::inner_opt(
+        parameters = x_num,
+        gamma = gamma,
+        control = control_inner,
+        ad_pack = ad_pack,
+        deriv = TRUE,
+        return_hessians = FALSE,
+        verbose = isTRUE(config[["verbose"]])
+      ),
+      error = function(e) e
+    )
+  }
+  result <- call_inner(cache$gamma)
+  # A warm start can sit where the inner Hessian is unusable. One cold start
+  # recovers the mode; do not feed L-BFGS a fake objective at that point.
+  if (outer_laplace_bad(result, length(x_num)) &&
+    any(cache$gamma != 0)) {
+    if (inherits(result, "error")) {
+      warning(
+        "inner_opt failed (", conditionMessage(result),
+        "); retrying from gamma = 0",
+        call. = FALSE
+      )
+    } else {
+      warning(
+        "Laplace objective was not finite; retrying from gamma = 0",
+        call. = FALSE
+      )
+    }
+    result <- call_inner(rep(0, num_gamma))
+  }
+  if (outer_laplace_bad(result, length(x_num))) {
+    stop(
+      if (inherits(result, "error")) {
+        conditionMessage(result)
+      } else {
+        "Laplace objective was not finite"
+      },
+      call. = FALSE
+    )
+  }
   warn_if_inner_status(result)
   if (isTRUE(config$verbose)) {
     message(
@@ -230,9 +275,10 @@ warn_if_inner_status <- function(result) {
   }
 
   d_neg <- as.numeric(result$deriv$d_neg_log_lik)
+  nll <- result$neg_log_lik
   assign("gamma", result$inner_opt$solution, cache)
   assign("fg_x", x_num, cache)
-  assign("neg_log_lik", result$neg_log_lik, cache)
+  assign("neg_log_lik", nll, cache)
   assign("d_neg_log_lik", d_neg, cache)
   # Clear any leftover full Laplace result so fit.R does not reuse a slim cache.
   if (exists("fg_result", envir = cache, inherits = FALSE)) {
@@ -243,9 +289,9 @@ warn_if_inner_status <- function(result) {
   }
   cache$fg_evals <- cache$fg_evals + 1L
   list(
-    neg_log_lik = result$neg_log_lik,
+    neg_log_lik = nll,
     d_neg_log_lik = d_neg,
-    inner_opt = list(solution = result$inner_opt$solution)
+    inner_opt = list(solution = cache$gamma)
   )
 }
 

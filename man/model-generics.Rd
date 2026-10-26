@@ -8,11 +8,13 @@
 \alias{beta_info}
 \alias{random_info}
 \alias{elgm_matrix}
+\alias{observation_response}
 \alias{design,model_term-method}
 \alias{precision,model_term-method}
 \alias{theta_info,model_term-method}
 \alias{beta_info,model_term-method}
 \alias{random_info,model_term-method}
+\alias{observation_response,model_term-method}
 \alias{extra_density}
 \alias{extra_density,model_term-method}
 \title{Model Term Generics}
@@ -29,6 +31,8 @@ random_info(term, data)
 
 elgm_matrix(term, data)
 
+observation_response(term, data)
+
 \S4method{design}{model_term}(term, data)
 
 \S4method{precision}{model_term}(term, data)
@@ -39,6 +43,8 @@ elgm_matrix(term, data)
 
 \S4method{random_info}{model_term}(term, data)
 
+\S4method{observation_response}{model_term}(term, data)
+
 extra_density(term)
 
 \S4method{extra_density}{model_term}(term)
@@ -46,15 +52,21 @@ extra_density(term)
 \arguments{
 \item{term}{A model term object.}
 
-\item{data}{A data frame containing the variables.}
+\item{data}{A data frame.}
 }
 \value{
 Method-specific return values.
+
+A numeric vector, or \code{NULL}.
 
 Character density name, or \code{NULL}.
 }
 \description{
 Generic functions for extracting model matrices and parameter information from model terms.
+
+Default reads \code{data[[term@name]]}. Aggregated terms override this when
+the counts are not one row of \code{data} (district totals on cell-level
+designs). \code{NULL} means the column is absent.
 
 When non-\code{NULL}, \code{\link{model_data}} emits an extra
 \code{ad_kind = "parameters"} shard (e.g. FEM log-determinant) alongside the

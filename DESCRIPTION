@@ -1,8 +1,8 @@
 Package: adlaplace
 Type: Package
 Title: Laplace Approximations Using Automatic Differentiation
-Version: 0.7.4
-Date: 2026-10-08
+Version: 0.7.5
+Date: 2026-10-14
 Authors@R: person(given="Patrick", family="Brown", email="patrick.borgnine@gmail.com", role=c("aut","cre","cph"))
 Maintainer: Patrick Brown <patrick.borgnine@gmail.com>
 Description: Computes Laplace-approximate maximum likelihood for hierarchical
@@ -19,14 +19,15 @@ Description: Computes Laplace-approximate maximum likelihood for hierarchical
     <doi:10.18637/jss.v070.i05>.
 License: GPL (>= 2)
 Depends: R (>= 3.5.0)
-Imports: Matrix (>= 1.2.18), Rcpp (>= 1.0.3), methods, data.table,
-        stats, graphics, RCppAD
-Suggests: knitr, rmarkdown, trustOptim, testthat (>= 3.0.0), mvQuad,
-        mgcv, MASS, nlme, sn, terra, GET, WoodburyMatrix, extraDistr,
-        RSpectra, aghq, numDeriv
+Imports: Matrix (>= 1.2.18), Rcpp (>= 1.0.3), methods, stats, graphics,
+        RCppAD (>= 1.20260000.0-2)
+Suggests: knitr, rmarkdown, trustOptim, testthat (>= 3.0.0),
+        data.table, mvQuad, mgcv, MASS, nlme, sn, terra, GET,
+        WoodburyMatrix, extraDistr, RSpectra, aghq, numDeriv
 Config/testthat/edition: 3
 VignetteBuilder: knitr
-LinkingTo: Rcpp, RcppEigen, trustOptim, Matrix, RCppAD
+LinkingTo: Rcpp, RcppEigen, trustOptim, Matrix, RCppAD (>=
+        1.20260000.0-2)
 Encoding: UTF-8
 SystemRequirements: OpenMP
 NeedsCompilation: yes
@@ -37,11 +38,11 @@ Collate: 'RcppExports.R' 'classes.R' 'density_data.R' 'ad_pack_ptr.R'
         'fit_methods.R' 'fixed_terms.R' 'format_parameters.R'
         'germany-data.R' 'hessian_map.R' 'iid.R' 'iwp.R'
         'london-data.R' 'mvn_utils.R' 'prepare_model_rows.R' 'prior.R'
-        'replace_vars.R' 'rpoly.R' 'sim_iid.R' 'takahashi_davis.R'
-        'term_data_setup.R' 'zzz.R'
+        'psd.R' 'replace_vars.R' 'rpoly.R' 'sim_iid.R'
+        'takahashi_davis.R' 'term_data_setup.R' 'zzz.R'
 LazyData: true
 Config/roxygen2/version: 8.1.0
-Packaged: 2026-10-09 20:46:55 UTC; patrick
+Packaged: 2026-10-26 12:52:15 UTC; patrick
 Author: Patrick Brown [aut, cre, cph]
 Repository: CRAN
-Date/Publication: 2026-10-21 14:40:14 UTC
+Date/Publication: 2026-10-26 19:30:10 UTC

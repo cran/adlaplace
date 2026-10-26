@@ -25,11 +25,16 @@ density_data(
 \item{y}{Response vector (default empty), or an existing \code{density_data} object
 to recast as another shard.}
 
-\item{A}{Random-effects design matrix (\code{nrow(A) = length(y)}; any
-\code{Matrix} class).}
+\item{A}{Random-effects design matrix (any \code{Matrix} class).
+When \code{elgm_matrix} is missing, \code{nrow(A) = length(y)}.
+When the response is indexed by ELGM rows (\code{length(y) = nrow(elgm_matrix)}),
+\code{nrow(A)} equals \code{length(y)} or \code{ncol(elgm_matrix)}.
+When the response is aggregated on ELGM columns
+(\code{length(y) = ncol(elgm_matrix)}), \code{nrow(A)} equals
+\code{nrow(elgm_matrix)} (one design row per cell).}
 
-\item{X}{Fixed-effects design matrix (\code{nrow(X) = length(y)}; any
-\code{Matrix} class).}
+\item{X}{Fixed-effects design matrix (any \code{Matrix} class). Row
+alignment matches \code{A}.}
 
 \item{beta_map}{Beta parameter map (any \code{Matrix}; coerced to
 \code{ngCMatrix}), or a shorthand: length-1 integer \code{n} gives
@@ -57,8 +62,13 @@ otherwise an empty matrix.}
 \code{beta_map}. Column \code{j} selects global theta row for component
 \code{j}. If \code{NULL}, defaults to an empty matrix.}
 
-\item{elgm_matrix}{Optional ELGM map (any \code{Matrix}; coerced to
-\code{ngCMatrix}). If \code{NULL}, defaults to \code{Matrix::Matrix(nrow = length(y), ncol = 0)}.}
+\item{elgm_matrix}{Optional ELGM map (any \code{Matrix}). Pattern matrices
+are coerced to \code{ngCMatrix}. Numeric matrices are stored as
+\code{dgCMatrix}, so entry weights are kept. Either the response is
+indexed by rows (\code{nrow(elgm_matrix) = length(y)}; columns are strata
+or design rows) or, for an aggregated likelihood, rows are design cells
+and columns are aggregated units (\code{ncol(elgm_matrix) = length(y)}).
+If \code{NULL}, defaults to \code{Matrix::Matrix(nrow = length(y), ncol = 0)}.}
 
 \item{density}{Registered AD density name for this shard (optional).}
 
@@ -110,7 +120,11 @@ local \code{A} columns into the global gamma block.}
 \item{\code{theta_map}}{Theta parameter map (\code{ngCMatrix}). Column \code{j}
 selects global theta row \code{r} for this shard's theta component \code{j}.}
 
-\item{\code{elgm_matrix}}{Optional exposure-lag map (\code{ngCMatrix}; empty by default).}
+\item{\code{elgm_matrix}}{Optional exposure-lag map (\code{CsparseMatrix}). A pattern
+matrix (\code{ngCMatrix}) marks membership. A numeric \code{dgCMatrix}
+stores a weight on each entry, such as population in a cell-region
+intersection. Rows index either observations or design cells; columns
+index strata or aggregated units. Empty by default.}
 
 \item{\code{density}}{Registered AD density name for this shard.}
 

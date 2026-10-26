@@ -54,6 +54,14 @@ penalty weights are the knot spacings divided by that mean spacing. Design
 entries and the standard-deviation parameter are then unchanged if \code{x}
 and the knots are rescaled by the same factor.
 }
+\section{Predictive SD}{
+
+The standard-deviation hyperparameter is on knot-spacing units. Use
+[psd()] for the predictive SD
+\eqn{\sigma\sqrt{(h/s)^{2p-1}/((2p-1)((p-1)!)^2)}} with mean spacing
+\eqn{s}, and [psd_prior()] for a PC prior on that scale.
+}
+
 \examples{
 knots <- seq(0, 1, length.out = 5)
 iwp_term <- iwp(x = "age", knots = knots)

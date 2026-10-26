@@ -264,7 +264,10 @@ extract_response <- function(terms, formula_in, data) {
   }
 
   if (length(term_idx) == 1L) {
-    return(as.numeric(data[[terms[[term_idx]]@name]]))
+    y_term <- observation_response(terms[[term_idx]], data)
+    if (!is.null(y_term)) {
+      return(as.numeric(y_term))
+    }
   }
 
   if (methods::is(formula_in, "formula")) {

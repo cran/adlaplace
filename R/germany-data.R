@@ -10,7 +10,8 @@
 #' District boundaries are not stored in this object (to avoid a hard
 #' dependency on \pkg{terra}). They ship as
 #' \code{system.file("extdata", "germany_map.gpkg", package = "adlaplace")}
-#' and can be loaded with \code{terra::vect(...)} when \pkg{terra} is installed.
+#' in ETRS89 / LCC Germany (\code{EPSG:4839}) and can be loaded with
+#' \code{terra::vect(...)} when \pkg{terra} is installed.
 #'
 #' @format A list with:
 #' \describe{

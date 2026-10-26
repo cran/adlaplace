@@ -38,7 +38,7 @@ config <- list(
   verbose = FALSE
 )
 
-data_obs <- adlaplace:::density_data(
+data_obs <- adlaplace::density_data(
   y = germany$Y,
   A = A_obs,
   X = X_obs,
@@ -47,7 +47,7 @@ data_obs <- adlaplace:::density_data(
   density = obs_term@density
 )
 
-model_struct <- adlaplace:::density_data(
+model_struct <- adlaplace::density_data(
   gamma_map = Matrix::sparseMatrix(
     i = seq_len(n), j = seq_len(n), x = 1,
     dims = c(n_gamma, n)
@@ -59,7 +59,7 @@ model_struct <- adlaplace:::density_data(
 )
 
 
-model_iid <- adlaplace:::density_data(
+model_iid <- adlaplace::density_data(
   gamma_map = Matrix::sparseMatrix(
     i = seq.int(n + 1L, length.out = n), j = seq_len(n), x = 1,
     dims = c(n_gamma, n)
@@ -83,7 +83,7 @@ ad_pack <- adlaplace::ad_pack(
 
 ## ----checkByShard-------------------------------------------------------------
 x_full <- c(config$gamma, config$theta)
-shards <- seq.int(from = 0L, length.out = adlaplace:::n_groups(ad_fun_plain))
+shards <- seq.int(from = 0L, length.out = adlaplace::n_groups(ad_fun_plain))
 
 by_shard <- vapply(
   shards,
@@ -158,7 +158,7 @@ par(mfrow = c(4, 2), mar = c(2, 2, 2, 0), mgp = c(1, 0.5, 0))
 
 x_here <- inner_res$full_parameters
 Dpar_dens <- 96L
-shards <- seq.int(from = 0L, length.out = adlaplace:::n_groups(ad_fun_plain))
+shards <- seq.int(from = 0L, length.out = adlaplace::n_groups(ad_fun_plain))
 
 scan_j <- deriv_scan_joint(
   ad_fun_plain,

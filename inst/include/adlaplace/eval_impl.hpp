@@ -6,8 +6,10 @@
 #include "adlaplace/eval.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cppad/cppad.hpp>
 #include <cstddef>
+#include <stdexcept>
 #include <vector>
 
 #include "adlaplace/backend.hpp"
@@ -142,6 +144,7 @@ const char* trace_hinv_t_strerror(int rc) {
     case 16: return "Reverse(3) result too short";
     case 17: return "trace buffers not assigned";
     case 18: return "assign_memory API missing";
+    case 19: return "CppAD derivative evaluation failed";
     default: return "unknown error";
   }
 }
@@ -168,7 +171,15 @@ public:
         gp.x[D] = x[D];
       }
     }
-    CppAD::vector<double> y = gp.fun.Forward(0, gp.x);
+    CppAD::vector<double> y;
+    try {
+      y = gp.fun.Forward(0, gp.x);
+    } catch (const std::exception &) {
+      return 19;
+    }
+    if (adlaplace_cppad_err_flag().load(std::memory_order_relaxed) != 0) {
+      return 19;
+    }
     if (y.size() < 1) return 6;
     *out_f += y[0];
     return 0;
@@ -191,13 +202,20 @@ public:
     auto& work_here = inner ? gp.work_inner_grad : gp.work_grad;
     const auto& cols_global = inner ? gp.grad_inner_cols_global : gp.grad_cols_global;
 
-    *out_f += gp.fun.Forward(0, gp.x)[0];
-    gp.fun.sparse_jac_rev(
-      gp.x,
-      pattern_here,
-      gp.unused_pattern,
-      "cppad",
-      work_here);
+    try {
+      *out_f += gp.fun.Forward(0, gp.x)[0];
+      gp.fun.sparse_jac_rev(
+        gp.x,
+        pattern_here,
+        gp.unused_pattern,
+        "cppad",
+        work_here);
+    } catch (const std::exception &) {
+      return 19;
+    }
+    if (adlaplace_cppad_err_flag().load(std::memory_order_relaxed) != 0) {
+      return 19;
+    }
 
     const size_t NoutGrad = pattern_here.nnz();
     const auto& cols = pattern_here.col();
@@ -235,28 +253,33 @@ public:
       }
     }
 
-    *out_f += gp.fun.Forward(0, gp.x)[0];
-
     auto& pattern_here_grad = inner ? gp.pattern_grad_inner : gp.pattern_grad;
     auto& work_here_grad = inner ? gp.work_inner_grad : gp.work_grad;
     auto& pattern_here_hes = inner ? gp.pattern_hessian_inner : gp.pattern_hessian;
     auto& work_here_hes = inner ? gp.work_inner_hess : gp.work_hess;
     const auto& cols_global = inner ? gp.grad_inner_cols_global : gp.grad_cols_global;
 
-    gp.fun.sparse_jac_rev(
-      gp.x,
-      pattern_here_grad,
-      gp.unused_pattern,
-      "cppad",
-      work_here_grad);
-
-    gp.fun.sparse_hes(
-      gp.x,
-      gp.w,
-      pattern_here_hes,
-      gp.unused_pattern,
-      "cppad.symmetric",
-      work_here_hes);
+    try {
+      *out_f += gp.fun.Forward(0, gp.x)[0];
+      gp.fun.sparse_jac_rev(
+        gp.x,
+        pattern_here_grad,
+        gp.unused_pattern,
+        "cppad",
+        work_here_grad);
+      gp.fun.sparse_hes(
+        gp.x,
+        gp.w,
+        pattern_here_hes,
+        gp.unused_pattern,
+        "cppad.symmetric",
+        work_here_hes);
+    } catch (const std::exception &) {
+      return 19;
+    }
+    if (adlaplace_cppad_err_flag().load(std::memory_order_relaxed) != 0) {
+      return 19;
+    }
 
     const size_t NoutGrad = pattern_here_grad.nnz();
     const auto& cols = pattern_here_grad.col();
@@ -461,20 +484,31 @@ public:
             break;
           }
 
+          const int err_before =
+              adlaplace_cppad_err_flag().load(std::memory_order_relaxed);
           gp.fun.Forward(0, gp.x);
           gp.fun.Forward(1, gp.trace.direction);
           gp.fun.Forward(2, gp.trace.direction_zeros);
           const CppAD::vector<double> dw = gp.fun.Reverse(3, gp.trace.wthree);
+          if (adlaplace_cppad_err_flag().load(std::memory_order_relaxed) !=
+              err_before) {
+            rc = 19;
+            break;
+          }
           if (dw.size() < 3 * n_params) {
             rc = 16;
             break;
           }
 
           for (std::size_t d = 0; d < n_params; ++d) {
+            const double contrib = dw[3 * d];
+            if (!std::isfinite(contrib)) {
+              continue;
+            }
             if (compacted) {
-              out_trace[gp.tape_to_global[d]] += dw[3 * d];
+              out_trace[gp.tape_to_global[d]] += contrib;
             } else {
-              out_trace[d] += dw[3 * d];
+              out_trace[d] += contrib;
             }
           }
         }

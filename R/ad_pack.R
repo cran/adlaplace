@@ -581,6 +581,9 @@ setMethod(
     if (missing(config) || is.null(config)) {
       stop("config is required for ad_pack(density_data, config)", call. = FALSE)
     }
+    if (!is.null(config[["obs_groups"]])) {
+      config$obs_groups <- as_obs_groups(config[["obs_groups"]])
+    }
     if (!is.null(config$num_threads)) {
       num_threads <- config$num_threads
     }
@@ -640,6 +643,9 @@ setMethod(
     }
     if (missing(config) || is.null(config)) {
       stop("config is required for ad_pack(model_data, config)", call. = FALSE)
+    }
+    if (!is.null(config[["obs_groups"]])) {
+      config$obs_groups <- as_obs_groups(config[["obs_groups"]])
     }
     if (!is.null(config$num_threads)) {
       num_threads <- config$num_threads

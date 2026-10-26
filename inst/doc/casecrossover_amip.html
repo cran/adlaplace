@@ -12,7 +12,7 @@
 
 <meta name="author" content="Patrick Brown" />
 
-<meta name="date" content="2026-10-09" />
+<meta name="date" content="2026-10-26" />
 
 <title>Approximate maximum influence perturbations</title>
 
@@ -342,7 +342,7 @@ code > span.er { color: #a61717; background-color: #e3d2d2; }
 <h1 class="title toc-ignore">Approximate maximum influence
 perturbations</h1>
 <h4 class="author">Patrick Brown</h4>
-<h4 class="date">2026-10-09</h4>
+<h4 class="date">2026-10-26</h4>
 
 
 <div id="TOC">
@@ -438,7 +438,7 @@ case-crossover vignette. Abbreviated knits use 2003 only.</p>
 <span id="cb2-21"><a href="#cb2-21" tabindex="-1"></a><span class="co">#&gt; Warning: inner_opt status is Radius of trust region is less than</span></span>
 <span id="cb2-22"><a href="#cb2-22" tabindex="-1"></a><span class="co">#&gt; stop.trust.radius; the Laplace approximation used this inner solution anyway</span></span>
 <span id="cb2-23"><a href="#cb2-23" tabindex="-1"></a><span class="co">#&gt; At iterate    15  f =       5346.5  |proj g|=        438.17</span></span>
-<span id="cb2-24"><a href="#cb2-24" tabindex="-1"></a><span class="co">#&gt; At iterate    20  f =       5341.5  |proj g|=        8.1316</span></span>
+<span id="cb2-24"><a href="#cb2-24" tabindex="-1"></a><span class="co">#&gt; At iterate    20  f =       5341.5  |proj g|=        8.1317</span></span>
 <span id="cb2-25"><a href="#cb2-25" tabindex="-1"></a><span class="co">#&gt; </span></span>
 <span id="cb2-26"><a href="#cb2-26" tabindex="-1"></a><span class="co">#&gt; iterations 21</span></span>
 <span id="cb2-27"><a href="#cb2-27" tabindex="-1"></a><span class="co">#&gt; function evaluations 30</span></span>
@@ -456,8 +456,8 @@ case-crossover vignette. Abbreviated knits use 2003 only.</p>
 <span id="cb2-39"><a href="#cb2-39" tabindex="-1"></a>fit<span class="sc">$</span>par_info[, <span class="fu">c</span>(<span class="st">&quot;label&quot;</span>, <span class="st">&quot;mle&quot;</span>, <span class="st">&quot;mle_internal&quot;</span>)]</span>
 <span id="cb2-40"><a href="#cb2-40" tabindex="-1"></a><span class="co">#&gt;                       label          mle  mle_internal</span></span>
 <span id="cb2-41"><a href="#cb2-41" tabindex="-1"></a><span class="co">#&gt; 1                 rh_linear 0.0006178345  0.0006178345</span></span>
-<span id="cb2-42"><a href="#cb2-42" tabindex="-1"></a><span class="co">#&gt; 2 all_dirichlet_multinom_sd 0.0023596821 -6.0492283849</span></span>
-<span id="cb2-43"><a href="#cb2-43" tabindex="-1"></a><span class="co">#&gt; 3                  pm10_iwp 0.0010411985 -6.8673827804</span></span>
+<span id="cb2-42"><a href="#cb2-42" tabindex="-1"></a><span class="co">#&gt; 2 all_dirichlet_multinom_sd 0.0023596821 -6.0492283854</span></span>
+<span id="cb2-43"><a href="#cb2-43" tabindex="-1"></a><span class="co">#&gt; 3                  pm10_iwp 0.0010411985 -6.8673827808</span></span>
 <span id="cb2-44"><a href="#cb2-44" tabindex="-1"></a><span class="co">#&gt; 4                 tmean_iwp 0.0090517336 -4.7047989815</span></span>
 <span id="cb2-45"><a href="#cb2-45" tabindex="-1"></a>n_strata</span>
 <span id="cb2-46"><a href="#cb2-46" tabindex="-1"></a><span class="co">#&gt; [1] 420</span></span></code></pre></div>
@@ -664,33 +664,35 @@ outer MLE (smoothness and overdispersion included).</p>
 <span id="cb8-34"><a href="#cb8-34" tabindex="-1"></a><span class="co">#&gt; At iterate     0  f=       5195.4  |proj g|=        10009</span></span>
 <span id="cb8-35"><a href="#cb8-35" tabindex="-1"></a><span class="co">#&gt; At iterate     5  f =       5192.6  |proj g|=        238.16</span></span>
 <span id="cb8-36"><a href="#cb8-36" tabindex="-1"></a><span class="co">#&gt; At iterate    10  f =       5192.3  |proj g|=        2919.5</span></span>
-<span id="cb8-37"><a href="#cb8-37" tabindex="-1"></a><span class="co">#&gt; At iterate    15  f =       5190.4  |proj g|=        9.1964</span></span>
-<span id="cb8-38"><a href="#cb8-38" tabindex="-1"></a><span class="co">#&gt; At iterate    20  f =       5176.9  |proj g|=        410.28</span></span>
-<span id="cb8-39"><a href="#cb8-39" tabindex="-1"></a><span class="co">#&gt; </span></span>
-<span id="cb8-40"><a href="#cb8-40" tabindex="-1"></a><span class="co">#&gt; iterations 24</span></span>
-<span id="cb8-41"><a href="#cb8-41" tabindex="-1"></a><span class="co">#&gt; function evaluations 33</span></span>
-<span id="cb8-42"><a href="#cb8-42" tabindex="-1"></a><span class="co">#&gt; segments explored during Cauchy searches 24</span></span>
-<span id="cb8-43"><a href="#cb8-43" tabindex="-1"></a><span class="co">#&gt; BFGS updates skipped 0</span></span>
-<span id="cb8-44"><a href="#cb8-44" tabindex="-1"></a><span class="co">#&gt; active bounds at final generalized Cauchy point 0</span></span>
-<span id="cb8-45"><a href="#cb8-45" tabindex="-1"></a><span class="co">#&gt; norm of the final projected gradient 0.693662</span></span>
-<span id="cb8-46"><a href="#cb8-46" tabindex="-1"></a><span class="co">#&gt; final function value 5176.77</span></span>
-<span id="cb8-47"><a href="#cb8-47" tabindex="-1"></a><span class="co">#&gt; </span></span>
-<span id="cb8-48"><a href="#cb8-48" tabindex="-1"></a><span class="co">#&gt; F = 5176.77</span></span>
-<span id="cb8-49"><a href="#cb8-49" tabindex="-1"></a><span class="co">#&gt; final  value 5176.765891 </span></span>
-<span id="cb8-50"><a href="#cb8-50" tabindex="-1"></a><span class="co">#&gt; converged</span></span>
-<span id="cb8-51"><a href="#cb8-51" tabindex="-1"></a><span class="co">#&gt;                       label          mle  mle_internal</span></span>
-<span id="cb8-52"><a href="#cb8-52" tabindex="-1"></a><span class="co">#&gt; 1                 rh_linear 0.0005938911  0.0005938911</span></span>
-<span id="cb8-53"><a href="#cb8-53" tabindex="-1"></a><span class="co">#&gt; 2 all_dirichlet_multinom_sd 0.0154897143 -4.1675790663</span></span>
-<span id="cb8-54"><a href="#cb8-54" tabindex="-1"></a><span class="co">#&gt; 3                  pm10_iwp 0.0009891239 -6.9186909740</span></span>
-<span id="cb8-55"><a href="#cb8-55" tabindex="-1"></a><span class="co">#&gt; 4                 tmean_iwp 0.0093463415 -4.6727702909</span></span>
-<span id="cb8-56"><a href="#cb8-56" tabindex="-1"></a></span>
-<span id="cb8-57"><a href="#cb8-57" tabindex="-1"></a><span class="fu">c</span>(</span>
-<span id="cb8-58"><a href="#cb8-58" tabindex="-1"></a>  <span class="at">phi_full =</span> phi_hat,</span>
-<span id="cb8-59"><a href="#cb8-59" tabindex="-1"></a>  <span class="at">phi_inner_drop =</span> phi_drop,</span>
-<span id="cb8-60"><a href="#cb8-60" tabindex="-1"></a>  <span class="at">phi_refit =</span> phi_refit</span>
-<span id="cb8-61"><a href="#cb8-61" tabindex="-1"></a>)</span>
-<span id="cb8-62"><a href="#cb8-62" tabindex="-1"></a><span class="co">#&gt;       phi_full phi_inner_drop      phi_refit </span></span>
-<span id="cb8-63"><a href="#cb8-63" tabindex="-1"></a><span class="co">#&gt;   0.0111662032  -0.0013678056  -0.0009615622</span></span></code></pre></div>
+<span id="cb8-37"><a href="#cb8-37" tabindex="-1"></a><span class="co">#&gt; Warning: inner_opt status is Radius of trust region is less than</span></span>
+<span id="cb8-38"><a href="#cb8-38" tabindex="-1"></a><span class="co">#&gt; stop.trust.radius; the Laplace approximation used this inner solution anyway</span></span>
+<span id="cb8-39"><a href="#cb8-39" tabindex="-1"></a><span class="co">#&gt; At iterate    15  f =       5190.4  |proj g|=        9.1964</span></span>
+<span id="cb8-40"><a href="#cb8-40" tabindex="-1"></a><span class="co">#&gt; At iterate    20  f =       5176.9  |proj g|=        410.28</span></span>
+<span id="cb8-41"><a href="#cb8-41" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb8-42"><a href="#cb8-42" tabindex="-1"></a><span class="co">#&gt; iterations 24</span></span>
+<span id="cb8-43"><a href="#cb8-43" tabindex="-1"></a><span class="co">#&gt; function evaluations 33</span></span>
+<span id="cb8-44"><a href="#cb8-44" tabindex="-1"></a><span class="co">#&gt; segments explored during Cauchy searches 24</span></span>
+<span id="cb8-45"><a href="#cb8-45" tabindex="-1"></a><span class="co">#&gt; BFGS updates skipped 0</span></span>
+<span id="cb8-46"><a href="#cb8-46" tabindex="-1"></a><span class="co">#&gt; active bounds at final generalized Cauchy point 0</span></span>
+<span id="cb8-47"><a href="#cb8-47" tabindex="-1"></a><span class="co">#&gt; norm of the final projected gradient 0.693662</span></span>
+<span id="cb8-48"><a href="#cb8-48" tabindex="-1"></a><span class="co">#&gt; final function value 5176.77</span></span>
+<span id="cb8-49"><a href="#cb8-49" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb8-50"><a href="#cb8-50" tabindex="-1"></a><span class="co">#&gt; F = 5176.77</span></span>
+<span id="cb8-51"><a href="#cb8-51" tabindex="-1"></a><span class="co">#&gt; final  value 5176.765891 </span></span>
+<span id="cb8-52"><a href="#cb8-52" tabindex="-1"></a><span class="co">#&gt; converged</span></span>
+<span id="cb8-53"><a href="#cb8-53" tabindex="-1"></a><span class="co">#&gt;                       label          mle  mle_internal</span></span>
+<span id="cb8-54"><a href="#cb8-54" tabindex="-1"></a><span class="co">#&gt; 1                 rh_linear 0.0005938911  0.0005938911</span></span>
+<span id="cb8-55"><a href="#cb8-55" tabindex="-1"></a><span class="co">#&gt; 2 all_dirichlet_multinom_sd 0.0154897143 -4.1675790664</span></span>
+<span id="cb8-56"><a href="#cb8-56" tabindex="-1"></a><span class="co">#&gt; 3                  pm10_iwp 0.0009891239 -6.9186909739</span></span>
+<span id="cb8-57"><a href="#cb8-57" tabindex="-1"></a><span class="co">#&gt; 4                 tmean_iwp 0.0093463415 -4.6727702908</span></span>
+<span id="cb8-58"><a href="#cb8-58" tabindex="-1"></a></span>
+<span id="cb8-59"><a href="#cb8-59" tabindex="-1"></a><span class="fu">c</span>(</span>
+<span id="cb8-60"><a href="#cb8-60" tabindex="-1"></a>  <span class="at">phi_full =</span> phi_hat,</span>
+<span id="cb8-61"><a href="#cb8-61" tabindex="-1"></a>  <span class="at">phi_inner_drop =</span> phi_drop,</span>
+<span id="cb8-62"><a href="#cb8-62" tabindex="-1"></a>  <span class="at">phi_refit =</span> phi_refit</span>
+<span id="cb8-63"><a href="#cb8-63" tabindex="-1"></a>)</span>
+<span id="cb8-64"><a href="#cb8-64" tabindex="-1"></a><span class="co">#&gt;       phi_full phi_inner_drop      phi_refit </span></span>
+<span id="cb8-65"><a href="#cb8-65" tabindex="-1"></a><span class="co">#&gt;   0.0111662032  -0.0013678056  -0.0009615622</span></span></code></pre></div>
 <div class="sourceCode" id="cb9"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" tabindex="-1"></a>num_sim <span class="ot">&lt;-</span> <span class="dv">200</span><span class="dt">L</span></span>
 <span id="cb9-2"><a href="#cb9-2" tabindex="-1"></a>num_grid <span class="ot">&lt;-</span> <span class="dv">101</span><span class="dt">L</span></span>
 <span id="cb9-3"><a href="#cb9-3" tabindex="-1"></a></span>

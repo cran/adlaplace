@@ -40,6 +40,10 @@ Built HTML vignettes (from CI):
 | Layer | R | C++ |
 | ------- | --- | ----- |
 | Model (formula, S4 terms) | `effects.R`, `term_data_setup.R`, term `*.R` | — |
+
+Smoothing terms such as `iwp()` expose a predictive SD via `psd()`; use
+`psd_prior()` to place a PC prior on that predictive SD. The **adlaplaceFem**
+package adds a near-monotone `mgp()` FEM smoother with the same `psd()` API.
 | Laplace (AD handle, profile likelihood) | `ad_pack.R`, `density_data.R`, `log_lik.R`, … | `inner_opt`, … |
 | Engine (eval, optimizer) | `R/RcppExports.R` | `src/`, `src/include/adlaplace/` |
 
